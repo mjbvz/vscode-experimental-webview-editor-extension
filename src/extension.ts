@@ -23,6 +23,7 @@ class Preview implements vscode.WebviewEditorCapabilities, vscode.WebviewEditorE
 
     private readonly _edits: Edit[] = [];
     private initialValue: string;
+    private readonly ready: Promise<void>;
 
     constructor(
         private readonly uri: vscode.Uri,
@@ -34,12 +35,19 @@ class Preview implements vscode.WebviewEditorCapabilities, vscode.WebviewEditorE
 
         this.setInitialContent(panel);
 
+        let resolve: () => void;
+        this.ready = new Promise<void>(r => resolve = r);
+        
         panel.webview.onDidReceiveMessage(message => {
             switch (message.type) {
                 case 'edit':
                     const edit: Edit = { value: message.value };
                     this._edits.push(edit);
                     this._onEdit.fire(edit);
+                    break;
+
+                case 'ready':
+                    resolve();
                     break;
             }
         });
@@ -55,7 +63,7 @@ class Preview implements vscode.WebviewEditorCapabilities, vscode.WebviewEditorE
     }
 
     private getHtml(value: string) {
-        return `<!DOCTYPE html>
+        return /* html */`<!DOCTYPE html>
         <html lang="en">
         <head>
             <meta charset="UTF-8">
@@ -79,13 +87,15 @@ class Preview implements vscode.WebviewEditorCapabilities, vscode.WebviewEditorE
                     }
                 })
 
-                textArea.addEventListener('input', () => {
-                    console.log('change');
+                textArea.addEventListener('input', e => {
+                    console.log('change', e);
                     vscode.postMessage({
                         type: 'edit',
                         value: textArea.value
                     })
                 });
+
+                vscode.postMessage({ type: 'ready' })
             </script>
         </body>
         </html>`;
@@ -95,21 +105,27 @@ class Preview implements vscode.WebviewEditorCapabilities, vscode.WebviewEditorE
         return vscode.workspace.fs.writeFile(this.uri, Buffer.from(this.getContents()))
     }
 
+    saveAs(resource: vscode.Uri, targetResource: vscode.Uri): Thenable<void> {
+        console.log('saveAs')
+        return vscode.workspace.fs.writeFile(targetResource, Buffer.from(this.getContents()));
+    }
+
     hotExit(hotExitPath: vscode.Uri): Thenable<void> {
         throw new Error("Method not implemented.");
     }
 
-    async applyEdits(edits: readonly string[]): Promise<void> {
+    async applyEdits(edits: readonly any[]): Promise<void> {
         this._edits.push(...edits.map(x => typeof x === 'string' ? JSON.parse(x) : x));
         this.update();
     }
 
-    async undoEdits(edits: readonly string[]): Promise<void> {
+    async undoEdits(edits: readonly any[]): Promise<void> {
         this._edits.pop();
         this.update();
     }
 
-    private update() {
+    private async update() {
+        await this.ready;
         console.log('apply', this.getContents());
         this.panel.webview.postMessage({
             type: 'apply',
