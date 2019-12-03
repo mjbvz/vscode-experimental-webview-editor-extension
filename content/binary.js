@@ -183,7 +183,7 @@ window.addEventListener('message', async e => {
             const buffer = new Uint8Array(e.data.value.data);
             const blob = new Blob([buffer], { type: 'image/jpeg' });
             view.drawBackgroundImage(blob);
-            view.redraw();
+            view.redraw(model);
             break;
 
         case 'save':

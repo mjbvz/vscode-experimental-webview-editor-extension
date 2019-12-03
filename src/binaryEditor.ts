@@ -1,12 +1,13 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { Disposable } from './dispose';
 
 interface Edit {
-    points: [number, number][];
-    data: Uint8Array;
+    readonly points: [number, number][];
+    readonly data: Uint8Array;
 }
 
-export class CatEditor implements vscode.WebviewEditorCapabilities, vscode.WebviewEditorEditingCapability {
+export class CatEditor extends Disposable implements vscode.WebviewEditorCapabilities, vscode.WebviewEditorEditingCapability {
 
     public static readonly viewType = 'testWebviewEditor.catDraw';
 
@@ -17,21 +18,18 @@ export class CatEditor implements vscode.WebviewEditorCapabilities, vscode.Webvi
 
     private readonly _edits: Edit[] = [];
     private initialValue: Uint8Array;
-    private readonly ready: Promise<void>;
 
     constructor(
         private readonly _extensionPath: string,
         private readonly uri: vscode.Uri,
         private readonly panel: vscode.WebviewPanel
     ) {
+        super();
+
         panel.webview.options = {
             enableScripts: true,
         };
-
-        this.setInitialContent(panel);
-
-        let resolve: () => void;
-        this.ready = new Promise<void>(r => resolve = r);
+        panel.webview.html = this.html;
 
         panel.webview.onDidReceiveMessage(message => {
             switch (message.type) {
@@ -40,26 +38,21 @@ export class CatEditor implements vscode.WebviewEditorCapabilities, vscode.Webvi
                     this._edits.push(edit);
                     this._onEdit.fire(edit);
                     break;
-
-                case 'ready':
-                    resolve();
-                    break;
             }
         });
 
         this.editingCapability = this;
+
+        this.setInitialContent();
     }
 
-    private async setInitialContent(panel: vscode.WebviewPanel): Promise<void> {
-        panel.webview.html = this.getHtml(this.uri);
+    private async setInitialContent(): Promise<void> {
         this.initialValue = await vscode.workspace.fs.readFile(this.uri);
         this.postMessage('init', this.initialValue);
     }
 
-    private getHtml(resource: vscode.Uri) {
+    private get html() {
         const contentRoot = path.join(this._extensionPath, 'content');
-        const resourcePath = JSON.stringify(this.panel.webview.asWebviewUri(resource).toString());
-        const cursor = this.panel.webview.asWebviewUri(vscode.Uri.file(path.join(contentRoot, 'paw.svg')));
         return /* html */`<!DOCTYPE html>
         <html lang="en">
         <head>
@@ -68,14 +61,11 @@ export class CatEditor implements vscode.WebviewEditorCapabilities, vscode.Webvi
             <meta http-equiv="X-UA-Compatible" content="ie=edge">
             <title>Document</title>
 
-            <meta id="resourcePath" data-value=${resourcePath}>
-
             <style>
                 .cursor {
                     width: 20px;
                     height: 30px;
                     position: absolute;
-                    background-image: url(${cursor});
                     background-position: stretch;
                     display: none;
                     z-index: 10;
@@ -105,13 +95,13 @@ export class CatEditor implements vscode.WebviewEditorCapabilities, vscode.Webvi
         return vscode.workspace.fs.writeFile(this.uri, edit.data);
     }
 
-    async saveAs(resource: vscode.Uri, targetResource: vscode.Uri): Promise<void> {
-        console.log('saveAs')
-        // return vscode.workspace.fs.writeFile(targetResource, Buffer.from(this.getContents()));
-    }
+    async saveAs(_resource: vscode.Uri, targetResource: vscode.Uri): Promise<void> {
+        if (this._edits.length) {
+            return vscode.workspace.fs.writeFile(targetResource, this.initialValue);
+        }
 
-    hotExit(hotExitPath: vscode.Uri): Thenable<void> {
-        throw new Error("Method not implemented.");
+        const edit = this._edits[this._edits.length - 1];
+        return vscode.workspace.fs.writeFile(targetResource, edit.data);
     }
 
     async applyEdits(edits: readonly Edit[]): Promise<void> {
@@ -127,7 +117,9 @@ export class CatEditor implements vscode.WebviewEditorCapabilities, vscode.Webvi
     }
 
     private async postMessage(type: string, value: any) {
-        await this.ready;
+        if (this.isDisposed) {
+            return;
+        }
         this.panel.webview.postMessage({ type, value });
     }
 }
