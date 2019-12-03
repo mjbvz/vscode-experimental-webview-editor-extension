@@ -1,12 +1,13 @@
 import * as vscode from 'vscode';
+import { Disposable } from './dispose';
 
 interface Edit {
     value: string;
 }
 
-export class AbcEditor implements vscode.WebviewEditorCapabilities, vscode.WebviewEditorEditingCapability {
+export class AbcEditor extends Disposable implements vscode.WebviewEditorCapabilities, vscode.WebviewEditorEditingCapability {
 
-    public static readonly viewType = 'testWebviewEditor';
+    public static readonly viewType = 'testWebviewEditor.abc';
 
     public readonly editingCapability?: vscode.WebviewEditorEditingCapability;
 
@@ -21,6 +22,8 @@ export class AbcEditor implements vscode.WebviewEditorCapabilities, vscode.Webvi
         private readonly uri: vscode.Uri,
         private readonly panel: vscode.WebviewPanel
     ) {
+        super();
+
         panel.webview.options = {
             enableScripts: true,
         };
@@ -29,7 +32,7 @@ export class AbcEditor implements vscode.WebviewEditorCapabilities, vscode.Webvi
 
         let resolve: () => void;
         this.ready = new Promise<void>(r => resolve = r);
-        
+
         panel.webview.onDidReceiveMessage(message => {
             switch (message.type) {
                 case 'edit':
@@ -43,6 +46,8 @@ export class AbcEditor implements vscode.WebviewEditorCapabilities, vscode.Webvi
                     break;
             }
         });
+
+        panel.onDidDispose(() => { this.dispose(); })
 
         this.editingCapability = this;
     }
@@ -118,7 +123,6 @@ export class AbcEditor implements vscode.WebviewEditorCapabilities, vscode.Webvi
 
     private async update() {
         await this.ready;
-        console.log('apply', this.getContents());
         this.panel.webview.postMessage({
             type: 'apply',
             value: this.getContents()
