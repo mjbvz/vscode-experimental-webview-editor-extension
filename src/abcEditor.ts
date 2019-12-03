@@ -1,8 +1,9 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { Disposable } from './dispose';
 
 interface Edit {
-    value: string;
+    readonly value: string;
 }
 
 export class AbcEditor extends Disposable implements vscode.WebviewEditorCapabilities, vscode.WebviewEditorEditingCapability {
@@ -19,6 +20,7 @@ export class AbcEditor extends Disposable implements vscode.WebviewEditorCapabil
     private readonly ready: Promise<void>;
 
     constructor(
+        private readonly _extensionPath: string,
         private readonly uri: vscode.Uri,
         private readonly panel: vscode.WebviewPanel
     ) {
@@ -27,11 +29,7 @@ export class AbcEditor extends Disposable implements vscode.WebviewEditorCapabil
         panel.webview.options = {
             enableScripts: true,
         };
-
-        this.setInitialContent(panel);
-
-        let resolve: () => void;
-        this.ready = new Promise<void>(r => resolve = r);
+        panel.webview.html = this.html;
 
         panel.webview.onDidReceiveMessage(message => {
             switch (message.type) {
@@ -40,91 +38,68 @@ export class AbcEditor extends Disposable implements vscode.WebviewEditorCapabil
                     this._edits.push(edit);
                     this._onEdit.fire(edit);
                     break;
-
-                case 'ready':
-                    resolve();
-                    break;
             }
         });
 
         panel.onDidDispose(() => { this.dispose(); })
 
         this.editingCapability = this;
+
+        this.setInitialContent(panel);
     }
 
     private async setInitialContent(panel: vscode.WebviewPanel): Promise<void> {
         const initialContent = await vscode.workspace.fs.readFile(this.uri);
         this.initialValue = Buffer.from(initialContent).toString('utf8')
-
-        panel.webview.html = this.getHtml(this.initialValue);
+        this.update();
     }
 
-    private getHtml(value: string) {
+    private get html() {
+        const contentRoot = path.join(this._extensionPath, 'content');
+        const scriptUri = vscode.Uri.file(path.join(contentRoot, 'abc.js'));
+        const nonce = Date.now() + '';
         return /* html */`<!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <meta http-equiv="X-UA-Compatible" content="ie=edge">
-            <title>Document</title>
-        </head>
-        <body>
-            <textarea style="width: 300px; height: 300px;"></textarea>
-            <script>
-                const vscode = acquireVsCodeApi();
-
-                const textArea = document.querySelector('textarea');
-                textArea.value = ${JSON.stringify(value)};
-
-                window.addEventListener('message', e => {
-                    switch (e.data.type) {
-                        case 'apply':
-                            textArea.value = e.data.value;
-                            break;
-                    }
-                })
-
-                textArea.addEventListener('input', e => {
-                    console.log('change', e);
-                    vscode.postMessage({
-                        type: 'edit',
-                        value: textArea.value
-                    })
-                });
-
-                vscode.postMessage({ type: 'ready' })
-            </script>
-        </body>
-        </html>`;
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline';">
+                <title>Document</title>
+            </head>
+            <body>
+                <textarea style="width: 300px; height: 300px;"></textarea>
+                <script nonce=${nonce} src="${this.panel.webview.asWebviewUri(scriptUri)}"></script>
+            </body>
+            </html>`;
     }
 
-    save(): Thenable<void> {
+    async save(): Promise<void> {
         return vscode.workspace.fs.writeFile(this.uri, Buffer.from(this.getContents()))
     }
 
-    saveAs(resource: vscode.Uri, targetResource: vscode.Uri): Thenable<void> {
-        console.log('saveAs')
+    async saveAs(targetResource: vscode.Uri): Promise<void> {
         return vscode.workspace.fs.writeFile(targetResource, Buffer.from(this.getContents()));
     }
 
-    hotExit(hotExitPath: vscode.Uri): Thenable<void> {
-        throw new Error("Method not implemented.");
-    }
-
     async applyEdits(edits: readonly any[]): Promise<void> {
-        this._edits.push(...edits.map(x => typeof x === 'string' ? JSON.parse(x) : x));
+        this._edits.push(...edits);
         this.update();
     }
 
     async undoEdits(edits: readonly any[]): Promise<void> {
-        this._edits.pop();
+        for (let i = 0; i < edits.length; ++i) {
+            this._edits.pop();
+        }
         this.update();
     }
 
     private async update() {
-        await this.ready;
+        if (this.isDisposed) {
+            return;
+        }
+
         this.panel.webview.postMessage({
-            type: 'apply',
+            type: 'setValue',
             value: this.getContents()
         });
     }
