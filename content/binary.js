@@ -1,206 +1,238 @@
 // @ts-check
-const vscode = acquireVsCodeApi();
 
-const cursor = document.createElement('div');
-cursor.classList.add('cursor');
-document.body.append(cursor);
+(function () {
+    const vscode = acquireVsCodeApi();
 
-class Stroke {
-    constructor(/** @type {Array<[number, number]> | undefined} */ points) {
-        /** @type {Array<[number, number]>} */
-        this.points = points || [];
-    }
+    const cursor = document.createElement('div');
+    cursor.classList.add('cursor');
+    document.body.append(cursor);
 
-    /**
-     * @param {number} x 
-     * @param {number} y 
-     */
-    add(x, y) {
-        this.points.push([x, y])
-    }
-}
-
-class Model {
-    constructor() {
-        /** @type {Array<Stroke>} */
-        this.strokes = [];
-
-        /** @type {Stroke | undefined} */
-        this.currentStroke = undefined;
-
-        /** @type {Array<() => void>} */
-        this.listeners = [];
-    }
-
-    listen(/** @type {() => void} */ listener) {
-        this.listeners.push(listener);
-    }
-
-    begin() {
-        this.currentStroke = new Stroke();
-        this.strokes.push(this.currentStroke);
-    }
-
-    end() {
-        const previous = this.currentStroke;
-        this.currentStroke = undefined;
-        return previous;
-    }
-
-    /**
-     * @param {number} x 
-     * @param {number} y 
-     */
-    add(x, y) {
-        if (!this.currentStroke) {
-            return;
+    class Stroke {
+        constructor(/** @type {Array<[number, number]> | undefined} */ points) {
+            /** @type {Array<[number, number]>} */
+            this.points = points || [];
         }
-        this.currentStroke.add(x, y)
-    }
 
-    undo() {
-        if (!this.strokes.length) {
-            return;
+        /**
+         * @param {number} x 
+         * @param {number} y 
+         */
+        add(x, y) {
+            this.points.push([x, y])
         }
-        this.strokes.pop();
-        this.listeners.forEach(x => x());
     }
 
-    redo(points) {
-        this.strokes.push(new Stroke(points));
-        this.listeners.forEach(x => x());
-    }
-}
+    class Model {
+        constructor() {
+            /** @type {Array<Stroke>} */
+            this.strokes = [];
 
-class View {
-    constructor(
-        /** @type {HTMLElement} */ parent,
-        /** @type {Model} */ model,
-    ) {
-        this.wrapper = document.createElement('div');
-        this.wrapper.className = 'image-wrapper';
-        this.wrapper.style.position = 'relative';
-        parent.append(this.wrapper);
+            /** @type {Stroke | undefined} */
+            this.currentStroke = undefined;
 
-        this.initialCanvas = document.createElement('canvas');
-        this.initialCanvas.className = 'initial-canvas';
-        this.initialCtx = this.initialCanvas.getContext('2d');
-        this.wrapper.append(this.initialCanvas);
+            /** @type {Array<() => void>} */
+            this.listeners = [];
+        }
 
-        this.drawingCanvas = document.createElement('canvas');
-        this.drawingCanvas.className = 'drawing-canvas';
-        this.drawingCanvas.style.position = 'absolute';
-        this.drawingCanvas.style.top = '0';
-        this.drawingCanvas.style.left = '0';
-        this.drawingCtx = this.drawingCanvas.getContext('2d');
-        this.wrapper.append(this.drawingCanvas);
+        listen(/** @type {() => void} */ listener) {
+            this.listeners.push(listener);
+        }
 
-        let isDrawing = false
+        begin() {
+            this.currentStroke = new Stroke();
+            this.strokes.push(this.currentStroke);
+        }
 
-        document.body.addEventListener('mousedown', () => {
-            model.begin();
-            isDrawing = true;
-            document.body.classList.add('drawing');
-            this.drawingCtx.beginPath();
-        });
+        end() {
+            const previous = this.currentStroke;
+            this.currentStroke = undefined;
+            this.listeners.forEach(x => x());
+            return previous;
+        }
 
-        document.body.addEventListener('mouseup', async () => {
-            isDrawing = false;
-            document.body.classList.remove('drawing');
-            this.drawingCtx.closePath();
-
-            const stroke = model.end();
-
-            const data = await this.getData();
-            vscode.postMessage({ type: 'stroke', value: { points: stroke.points, data } });
-        });
-
-        document.body.addEventListener('mousemove', e => {
-            if (!isDrawing) {
+        /**
+         * @param {number} x 
+         * @param {number} y 
+         */
+        add(x, y) {
+            if (!this.currentStroke) {
                 return;
             }
+            this.currentStroke.add(x, y)
+        }
 
-            const rect = this.wrapper.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            this.drawingCtx.lineTo(x, y);
-            this.drawingCtx.stroke();
-            model.add(x, y);
-
-            cursor.style.left = e.clientX + 'px';
-            cursor.style.top = e.clientY + 'px';
-        });
-
-        model.listen(() => {
-            this.redraw(model);
-        });
-    }
-
-    redraw(model) {
-        this.drawingCtx.clearRect(0, 0, this.drawingCanvas.width, this.drawingCanvas.height);
-        for (const stroke of model.strokes) {
-            this.drawingCtx.beginPath();
-            for (const [x, y] of stroke.points) {
-                this.drawingCtx.lineTo(x, y);
+        undo() {
+            if (!this.strokes.length) {
+                return;
             }
-            this.drawingCtx.stroke();
-            this.drawingCtx.closePath();
+            this.strokes.pop();
+            this.listeners.forEach(x => x());
+        }
+
+        redo(points) {
+            this.strokes.push(new Stroke(points));
+            this.listeners.forEach(x => x());
         }
     }
 
-    async drawBackgroundImage(/** @type{Blob} */ blob) {
-        const img = await createImageBitmap(blob);
-        this.initialCanvas.width = this.drawingCanvas.width = img.width;
-        this.initialCanvas.height = this.drawingCanvas.height = img.height;
-        this.initialCtx.drawImage(img, 0, 0);
+    class View {
+        constructor(
+        /** @type {HTMLElement} */ parent,
+        /** @type {Model} */ model,
+        ) {
+            this.ready = false;
+
+            this.wrapper = document.createElement('div');
+            this.wrapper.className = 'image-wrapper';
+            this.wrapper.style.position = 'relative';
+            parent.append(this.wrapper);
+
+            this.initialCanvas = document.createElement('canvas');
+            this.initialCanvas.className = 'initial-canvas';
+            this.initialCtx = this.initialCanvas.getContext('2d');
+            this.wrapper.append(this.initialCanvas);
+
+            this.drawingCanvas = document.createElement('canvas');
+            this.drawingCanvas.className = 'drawing-canvas';
+            this.drawingCanvas.style.position = 'absolute';
+            this.drawingCanvas.style.top = '0';
+            this.drawingCanvas.style.left = '0';
+            this.drawingCtx = this.drawingCanvas.getContext('2d');
+            this.wrapper.append(this.drawingCanvas);
+
+            let isDrawing = false
+
+            document.body.addEventListener('mousedown', () => {
+                if (!this.ready) {
+                    return;
+                }
+
+                model.begin();
+                isDrawing = true;
+                document.body.classList.add('drawing');
+                this.drawingCtx.beginPath();
+            });
+
+            document.body.addEventListener('mouseup', async () => {
+                if (!isDrawing || !this.ready) {
+                    return;
+                }
+
+                isDrawing = false;
+                document.body.classList.remove('drawing');
+                this.drawingCtx.closePath();
+
+                const stroke = model.end();
+
+                const data = await this.getData();
+                vscode.postMessage({ type: 'stroke', value: { points: stroke.points, data } });
+            });
+
+            document.body.addEventListener('mousemove', e => {
+                if (!isDrawing || !this.ready) {
+                    return;
+                }
+
+                const rect = this.wrapper.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                this.drawingCtx.lineTo(x, y);
+                this.drawingCtx.stroke();
+                model.add(x, y);
+
+                cursor.style.left = e.clientX + 'px';
+                cursor.style.top = e.clientY + 'px';
+            });
+
+            model.listen(() => {
+                this.redraw(model);
+            });
+        }
+
+        redraw(model) {
+            this.drawingCtx.clearRect(0, 0, this.drawingCanvas.width, this.drawingCanvas.height);
+            for (const stroke of model.strokes) {
+                this.drawingCtx.beginPath();
+                for (const [x, y] of stroke.points) {
+                    this.drawingCtx.lineTo(x, y);
+                }
+                this.drawingCtx.stroke();
+                this.drawingCtx.closePath();
+            }
+        }
+
+        async drawBackgroundImage(/** @type {string} */ uri) {
+            const img = document.createElement('img');
+            img.crossOrigin = 'anonymous';
+            img.src = uri;
+            await new Promise(resolve => img.onload = resolve);
+            this.initialCanvas.width = this.drawingCanvas.width = img.naturalWidth;
+            this.initialCanvas.height = this.drawingCanvas.height = img.naturalHeight;
+            this.initialCtx.drawImage(img, 0, 0);
+            this.ready = true;
+        }
+
+        /** @return {Promise<Uint8Array>} */
+        async getData() {
+            const outCanvas = document.createElement('canvas');
+            outCanvas.width = this.drawingCanvas.width;
+            outCanvas.height = this.drawingCanvas.height;
+
+            const outCtx = outCanvas.getContext('2d');
+            outCtx.drawImage(this.initialCanvas, 0, 0);
+            outCtx.drawImage(this.drawingCanvas, 0, 0);
+
+            const blob = await new Promise(resolve => {
+                outCanvas.toBlob(resolve, 'image/jpeg')
+            });
+
+            return new Uint8Array(await blob.arrayBuffer());
+        }
     }
 
-    /** @return {Promise<Uint8Array>} */
-    async getData() {
-        const outCanvas = document.createElement('canvas');
-        outCanvas.width = this.drawingCanvas.width;
-        outCanvas.height = this.drawingCanvas.height;
+    const model = new Model();
+    model.listen(() => {
+        updateState({ strokes: model.strokes.map(x => x.points) });
+    });
 
-        const outCtx = outCanvas.getContext('2d');
-        outCtx.drawImage(this.initialCanvas, 0, 0);
-        outCtx.drawImage(this.drawingCanvas, 0, 0);
+    const view = new View(document.body, model);
 
-        const blob = await new Promise(resolve => {
-            outCanvas.toBlob(resolve, 'image/jpeg')
-        });
+    window.addEventListener('message', e => {
+        switch (e.data.type) {
+            case 'init':
+                init(e.data.value);
+                break;
 
-        return new Uint8Array(await blob.arrayBuffer());
+            case 'save':
+                vscode.postMessage({ type: 'save' })
+                break;
+
+            case 'undo':
+                model.undo()
+                break;
+
+            case 'redo':
+                model.redo(e.data.value);
+                break;
+        }
+    });
+
+    const state = vscode.getState();
+    if (state) {
+        for (const stroke of state.strokes || []) {
+            model.redo(stroke);
+        }
+        init(state.uri);
     }
-}
 
-const model = new Model();
-
-const view = new View(document.body, model);
-
-window.addEventListener('message', async e => {
-    switch (e.data.type) {
-        case 'init':
-            const buffer = new Uint8Array(e.data.value.data);
-            const blob = new Blob([buffer], { type: 'image/jpeg' });
-            view.drawBackgroundImage(blob);
-            view.redraw(model);
-            break;
-
-        case 'save':
-            vscode.postMessage({ type: 'save' })
-            break;
-
-        case 'undo':
-            model.undo()
-            break;
-
-        case 'redo':
-            model.redo(e.data.value);
-            break;
+    async function init(uri) {
+        updateState({ uri });
+        await view.drawBackgroundImage(uri);
+        view.redraw(model);
     }
-});
 
-
-
-vscode.postMessage({ type: 'ready' })
-
+    function updateState(newState) {
+        const s = vscode.getState();
+        vscode.setState({ ...s, ...newState });
+    }
+}());

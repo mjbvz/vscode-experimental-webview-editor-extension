@@ -47,8 +47,7 @@ export class CatEditor extends Disposable implements vscode.WebviewEditorCapabil
     }
 
     private async setInitialContent(): Promise<void> {
-        this.initialValue = await vscode.workspace.fs.readFile(this.uri);
-        this.postMessage('init', this.initialValue);
+        this.postMessage('init', this.panel.webview.asWebviewUri(this.uri).toString());
     }
 
     private get html() {
@@ -96,8 +95,9 @@ export class CatEditor extends Disposable implements vscode.WebviewEditorCapabil
     }
 
     async saveAs(_resource: vscode.Uri, targetResource: vscode.Uri): Promise<void> {
-        if (this._edits.length) {
-            return vscode.workspace.fs.writeFile(targetResource, this.initialValue);
+        if (!this._edits.length) {
+            const current = await vscode.workspace.fs.readFile(this.uri);
+            return vscode.workspace.fs.writeFile(targetResource, current);
         }
 
         const edit = this._edits[this._edits.length - 1];
