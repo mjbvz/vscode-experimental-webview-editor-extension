@@ -77,7 +77,7 @@ export class AbcEditor extends Disposable implements vscode.WebviewEditorCapabil
         return vscode.workspace.fs.writeFile(this.uri, Buffer.from(this.getContents()))
     }
 
-    async saveAs(targetResource: vscode.Uri): Promise<void> {
+    async saveAs(_resource: vscode.Uri, targetResource: vscode.Uri): Promise<void> {
         return vscode.workspace.fs.writeFile(targetResource, Buffer.from(this.getContents()));
     }
 
