@@ -57,10 +57,8 @@ declare module 'vscode' {
 		save(): Thenable<boolean>;
 	}
 
-	interface CustomDocument extends BaseDocument {
-		readonly delegate: CustomDocumentDelegate;
-		
-		getValue(): any;
+	interface CustomDocument<T extends CustomDocumentDelegate> extends BaseDocument {
+		readonly delegate: T;
 	}
 
 	/**
@@ -88,15 +86,14 @@ declare module 'vscode' {
 		 * WebviewEditors that do not have `editingCapability` are considered to be readonly. Users can still interact
 		 * with readonly editors, but these editors will not integrate with VS Code's standard editor functionality.
 		 */
-		readonly editingCapability?: WebviewEditorEditingCapability;
-
+		readonly editingDelegate?: WebviewEditorEditingDelegate;
 	}
 
 	/**
 	 * Defines the editing functionality of a webview editor. This allows the webview editor to hook into standard
 	 * editor events such as `undo` or `save`.
 	 */
-	interface WebviewEditorEditingCapability {
+	interface WebviewEditorEditingDelegate {
 		/**
 		 * Persist the resource.
 		 *
@@ -104,7 +101,7 @@ declare module 'vscode' {
 		 *
 		 * @return Thenable signaling that the save has completed.
 		 */
-		save(): Thenable<void>;
+		save(document: CustomDocument): Thenable<void>;
 
 		/**
 		 *
@@ -152,22 +149,6 @@ declare module 'vscode' {
 		resolveWebviewEditor(document: CustomDocument, webview: WebviewPanel): Thenable<void>;
 	}
 
-	/**
-	 * A custom document provider allows extensions to implement 
-	 * 
-	 * Custom documents are used to back the `WebviewCustomEditorProvider` API.
-	 */
-	export interface CustomDocumentProvider {
-		/**
-		 * Provide a custom document for a given uri.
-		 * 
-		 * @param uri Identifies the resource to open.
-		 * 
-		 * @returns A `CustomDocumentDelegate` that implements the custom document.
-		 */
-		provideCustomDocument(uri: Uri): Thenable<CustomDocumentDelegate>; // should WebviewEditorDocument be related to TextDocument
-	}
-
 	namespace window {
 		/**
 		 * Register a new provider for webview editors of a given type.
@@ -178,7 +159,7 @@ declare module 'vscode' {
 		 *
 		 * @return Disposable that unregisters the `WebviewCustomEditorProvider`.
 		 */
-		export function registerWebviewCustomEditorProvider(id: string, provider: WebviewCustomEditorProvider, options?: WebviewPanelOptions): Disposable;
+		export function registerWebviewCustomEditorProvider(viewType: string, provider: WebviewCustomEditorProvider, options?: WebviewPanelOptions): Disposable;
 
 		/**
 		 * Register a new provider for custom documents of a given type.
@@ -188,6 +169,6 @@ declare module 'vscode' {
 		 *
 		 * @return Disposable that unregisters the `CustomDocumentProvider`.
 		 */
-		export function registerCustomDocumentProvider(id: string, provider: CustomDocumentProvider): Disposable;
+		export function registerCustomDocumentDelegate(documentType: string, delegate: CustomDocumentDelegate): Disposable;
 	}
 }

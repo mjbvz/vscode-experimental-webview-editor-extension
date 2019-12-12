@@ -25,7 +25,7 @@
                 "documentType": "testWebviewEditorDocument.abc"
             },
             {
-                "id": "testWebviewEditor.catDraw",
+                "viewType": "testWebviewEditor.catDraw",
                 "displayName": "Cat Draw",
                 "documentType": "testWebviewEditorDocument.catDraw"
             }
@@ -40,7 +40,7 @@
                 ]
             },
             {
-                "id": "testWebviewEditorDocument.catDraw",
+                "documentType": "testWebviewEditorDocument.catDraw",
                 "selector": [
                     {
                         "filenamePattern": "*.cat"
