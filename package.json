@@ -20,8 +20,19 @@
     "contributes": {
         "webviewEditors": [
             {
-                "displayName": "Test ABC editor",
                 "viewType": "testWebviewEditor.abc",
+                "displayName": "Test ABC editor",
+                "documentType": "testWebviewEditorDocument.abc"
+            },
+            {
+                "id": "testWebviewEditor.catDraw",
+                "displayName": "Cat Draw",
+                "documentType": "testWebviewEditorDocument.catDraw"
+            }
+        ],
+        "customDocument": [
+            {
+                "documentType": "testWebviewEditorDocument.abc",
                 "selector": [
                     {
                         "filenamePattern": "*.abc"
@@ -29,8 +40,7 @@
                 ]
             },
             {
-                "displayName": "Cat Draw",
-                "viewType": "testWebviewEditor.catDraw",
+                "id": "testWebviewEditorDocument.catDraw",
                 "selector": [
                     {
                         "filenamePattern": "*.cat"

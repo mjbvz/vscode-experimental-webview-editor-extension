@@ -16,10 +16,57 @@
 
 declare module 'vscode' {
 
+	export interface BaseDocument {
+
+		/**
+		 * The associated uri for this document.
+		 */
+		readonly uri: Uri;
+
+		/**
+		 * The file system path of the associated resource. Shorthand
+		 * notation for [TextDocument.uri.fsPath](#TextDocument.uri). Independent of the uri scheme.
+		 */
+		readonly fileName: string;
+
+		/**
+		 * Is this document representing an untitled file which has never been saved yet. *Note* that
+		 * this does not mean the document will be saved to disk, use [`uri.scheme`](#Uri.scheme)
+		 * to figure out where a document will be [saved](#FileSystemProvider), e.g. `file`, `ftp` etc.
+		 */
+		readonly isUntitled: boolean;
+
+		/**
+		 * `true` if there are unpersisted changes.
+		 */
+		readonly isDirty: boolean;
+
+		/**
+		 * `true` if the document has been closed. A closed document isn't synchronized anymore
+		 * and won't be re-used when the same resource is opened again.
+		 */
+		readonly isClosed: boolean;
+
+		/**
+		 * Save the underlying file.
+		 *
+		 * @return A promise that will resolve to true when the file
+		 * has been saved. If the file was not dirty or the save failed,
+		 * will return false.
+		 */
+		save(): Thenable<boolean>;
+	}
+
+	interface CustomDocument extends BaseDocument {
+		readonly delegate: CustomDocumentDelegate;
+		
+		getValue(): any;
+	}
+
 	/**
 	 * Defines how a webview editor interacts with VS Code.
 	 */
-	interface WebviewEditorCapabilities {
+	interface CustomDocumentDelegate {
 		/**
 		 * Invoked when the resource has been renamed in VS Code.
 		 *
@@ -42,6 +89,7 @@ declare module 'vscode' {
 		 * with readonly editors, but these editors will not integrate with VS Code's standard editor functionality.
 		 */
 		readonly editingCapability?: WebviewEditorEditingCapability;
+
 	}
 
 	/**
@@ -92,41 +140,54 @@ declare module 'vscode' {
 		undoEdits(edits: readonly any[]): Thenable<void>;
 	}
 
-	export interface WebviewEditorProvider {
+	/**
+	 * 
+	 */
+	export interface WebviewCustomEditorProvider {
 		/**
-		 * Resolve a webview editor for a given resource.
-		 *
-		 * To resolve a webview editor, a provider must fill in its initial html content and hook up all
-		 * the event listeners it is interested it. The provider should also take ownership of the passed in `WebviewPanel`.
-		 *
-		 * @param input Information about the resource being resolved.
-		 * @param webview Webview being resolved. The provider should take ownership of this webview.
-		 *
-		 * @return Thenable to a `WebviewEditorCapabilities` indicating that the webview editor has been resolved.
-		 *   The `WebviewEditorCapabilities` defines how the custom editor interacts with VS Code.
+		 * 
+		 * @param document 
+		 * @param webview 
 		 */
-		resolveWebviewEditor(
-			input: {
-				readonly resource: Uri
-			},
-			webview: WebviewPanel,
-		): Thenable<WebviewEditorCapabilities>;
+		resolveWebviewEditor(document: CustomDocument, webview: WebviewPanel): Thenable<void>;
+	}
+
+	/**
+	 * A custom document provider allows extensions to implement 
+	 * 
+	 * Custom documents are used to back the `WebviewCustomEditorProvider` API.
+	 */
+	export interface CustomDocumentProvider {
+		/**
+		 * Provide a custom document for a given uri.
+		 * 
+		 * @param uri Identifies the resource to open.
+		 * 
+		 * @returns A `CustomDocumentDelegate` that implements the custom document.
+		 */
+		provideCustomDocument(uri: Uri): Thenable<CustomDocumentDelegate>; // should WebviewEditorDocument be related to TextDocument
 	}
 
 	namespace window {
 		/**
 		 * Register a new provider for webview editors of a given type.
 		 *
-		 * @param viewType  Type of the webview editor provider.
+		 * @param id Type of the editors provided.
 		 * @param provider Resolves webview editors.
 		 * @param options Content settings for a webview panels the provider is given.
 		 *
-		 * @return Disposable that unregisters the `WebviewEditorProvider`.
+		 * @return Disposable that unregisters the `WebviewCustomEditorProvider`.
 		 */
-		export function registerWebviewEditorProvider(
-			viewType: string,
-			provider: WebviewEditorProvider,
-			options?: WebviewPanelOptions,
-		): Disposable;
+		export function registerWebviewCustomEditorProvider(id: string, provider: WebviewCustomEditorProvider, options?: WebviewPanelOptions): Disposable;
+
+		/**
+		 * Register a new provider for custom documents of a given type.
+		 *
+		 * @param id Type of the documents provided.
+		 * @param provider Resolves custom documents.
+		 *
+		 * @return Disposable that unregisters the `CustomDocumentProvider`.
+		 */
+		export function registerCustomDocumentProvider(id: string, provider: CustomDocumentProvider): Disposable;
 	}
 }
