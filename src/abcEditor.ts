@@ -6,102 +6,151 @@ interface Edit {
     readonly value: string;
 }
 
-export class AbcEditorManager {
-    private readonly models = new Map<string, AbcModel>();
+export class AbcEditorProvider implements vscode.WebviewCustomEditorProvider, vscode.WebviewCustomEditorEditingDelegate {
 
-    register(
-        extensionPath: string
-    ): vscode.Disposable {
-        return vscode.window.registerWebviewCustomEditorProvider(AbcEditor.viewType, {
-            resolveWebviewEditor: async (input, panel) => {
-                const model = this.models.get(input.resource.toString());
-                if (!model) {
-                    throw new Error('No model!');
-                }
-                new AbcEditor(extensionPath, input.resource, model, panel);
-            },
-            openWebviewEditorDocument: async (input) => {
-                const existing = this.models.get(input.resource.toString());
-                if (existing) {
-                    return existing;
-                }
-                const newModel = await AbcModel.create(input.resource);
-                this.models.set(input.resource.toString(), newModel);
-                return newModel;
+    public static readonly viewType = 'testWebviewEditor.abc';
+
+    private readonly models = new Map<string, AbcModel>();
+    private readonly editors = new Map<string, Set<AbcEditor>>();
+
+    public readonly editingDelegate?: vscode.WebviewCustomEditorEditingDelegate = this;
+
+    public constructor(
+        private readonly extensionPath: string
+    ) { }
+
+    public register(): vscode.Disposable {
+        return vscode.window.registerWebviewCustomEditorProvider(AbcEditorProvider.viewType, this);
+    }
+
+    public async resolveWebviewEditor(resource: vscode.Uri, panel: vscode.WebviewPanel) {
+        const model = await this.loadOrCreateModel(resource);
+        const editor = new AbcEditor(this.extensionPath, model, panel, {
+            onEdit: (edit) => {
+                model.pushEdits([edit]);
+                this._onEdit.fire({ resource, edit });
+                this.update(resource, editor);
             }
-        })
+        });
+
+        // Clean up models when there are no editors for them.
+        editor.onDispose(() => {
+            const entry = this.editors.get(resource.toString());
+            if (!entry) {
+                return
+            }
+            entry.delete(editor);
+            if (entry.size === 0) {
+                this.editors.delete(resource.toString());
+                this.models.delete(resource.toString());
+            }
+        });
+
+        let editorSet = this.editors.get(resource.toString());
+        if (!editorSet) {
+            editorSet = new Set();
+            this.editors.set(resource.toString(), editorSet);
+        }
+        editorSet.add(editor);
+    }
+
+    private async loadOrCreateModel(resource: vscode.Uri): Promise<AbcModel> {
+        const existing = this.models.get(resource.toString());
+        if (existing) {
+            return existing;
+        }
+
+        const newModel = await AbcModel.create(resource);
+        this.models.set(resource.toString(), newModel);
+        return newModel;
+    }
+
+    private getModel(resource: vscode.Uri): AbcModel {
+        const entry = this.models.get(resource.toString());
+        if (!entry) {
+            throw new Error('no model');
+        }
+        return entry;
+    }
+
+    public async save(resource: vscode.Uri): Promise<void> {
+        const model = this.getModel(resource);
+        await vscode.workspace.fs.writeFile(resource, Buffer.from(model.getContent()));
+    }
+
+    public async saveAs(resource: vscode.Uri, targetResource: vscode.Uri): Promise<void> {
+        const model = this.getModel(resource);
+        await vscode.workspace.fs.writeFile(targetResource, Buffer.from(model.getContent()));
+    }
+
+    private readonly _onEdit = new vscode.EventEmitter<{ readonly resource: vscode.Uri, readonly edit: Edit }>();
+    public readonly onEdit = this._onEdit.event;
+
+    async applyEdits(resource: vscode.Uri, edits: readonly any[]): Promise<void> {
+        const model = this.getModel(resource);
+        model.pushEdits(edits);
+        this.update(resource);
+    }
+
+    async undoEdits(resource: vscode.Uri, edits: readonly any[]): Promise<void> {
+        const model = this.getModel(resource);
+        model.popEdits(edits);
+        this.update(resource);
+    }
+
+    private update(resource: vscode.Uri, trigger?: AbcEditor) {
+        const editors = this.editors.get(resource.toString());
+        if (!editors) {
+            throw new Error(`No editors found for ${resource.toString()}`);
+        }
+        for (const editor of editors) {
+            if (editor !== trigger) {
+                editor.update();
+            }
+        }
     }
 }
 
-export class AbcModel implements vscode.WebviewEditorCapabilities, vscode.WebviewEditorEditingCapability {
-    private readonly value: string = '';
+export class AbcModel {
     private readonly _edits: Edit[] = [];
-
-    private readonly _onUpdate = new vscode.EventEmitter<void>();
-    public readonly onUpdate = this._onUpdate.event;
-
-    public readonly editingCapability?: vscode.WebviewEditorEditingCapability;
-
-    private readonly _onEdit = new vscode.EventEmitter<Edit>();
-    public readonly onEdit = this._onEdit.event;
 
     public static async create(resource: vscode.Uri): Promise<AbcModel> {
         const buffer = await vscode.workspace.fs.readFile(resource);
         const initialValue = Buffer.from(buffer).toString('utf8')
-        return new AbcModel(resource, initialValue);
+        return new AbcModel(initialValue);
     }
 
     private constructor(
-        private readonly uri: vscode.Uri,
         private readonly initialValue: string
-    ) {
-        this.editingCapability = this;
-    }
+    ) { }
 
-    async save(): Promise<void> {
-        return vscode.workspace.fs.writeFile(this.uri, Buffer.from(this.value))
-    }
-
-    async saveAs(_resource: vscode.Uri, targetResource: vscode.Uri): Promise<void> {
-        return vscode.workspace.fs.writeFile(targetResource, Buffer.from(this.value));
-    }
-
-    async applyEdits(edits: readonly any[]): Promise<void> {
+    public pushEdits(edits: readonly Edit[]): void {
         this._edits.push(...edits);
-        this.update();
     }
 
-    async undoEdits(edits: readonly any[]): Promise<void> {
+    public popEdits(edits: readonly Edit[]): void {
         for (let i = 0; i < edits.length; ++i) {
             this._edits.pop();
         }
-        this.update();
     }
 
-    public update() {
-        this._onUpdate.fire();
-    }
-
-    public makeEdit(edit: Edit) {
-        this._edits.push(edit);
-        this._onEdit.fire(edit);
-        this.update();
-    } 
-
-    public getContents() {
+    public getContent() {
         return this._edits.length ? this._edits[this._edits.length - 1].value : this.initialValue;
     }
 }
 
-export class AbcEditor extends Disposable {
+class AbcEditor extends Disposable {
 
-    public static readonly viewType = 'testWebviewEditor.abc';
+    public readonly _onDispose = this._register(new vscode.EventEmitter<void>());
+    public readonly onDispose = this._onDispose.event;
 
     constructor(
         private readonly _extensionPath: string,
-        private readonly uri: vscode.Uri,
         private readonly model: AbcModel,
-        private readonly panel: vscode.WebviewPanel
+        private readonly panel: vscode.WebviewPanel,
+        private readonly delegate: {
+            onEdit: (edit: Edit) => void
+        }
     ) {
         super();
 
@@ -110,19 +159,26 @@ export class AbcEditor extends Disposable {
         };
         panel.webview.html = this.html;
 
-        panel.webview.onDidReceiveMessage(message => {
+        this._register(panel.webview.onDidReceiveMessage(message => {
             switch (message.type) {
                 case 'edit':
-                    const edit: Edit = { value: message.value };
-                    this.model.makeEdit(edit);
+                    this.delegate.onEdit({ value: message.value });
                     break;
             }
-        });
+        }));
 
-        panel.onDidDispose(() => { this.dispose(); })
+        this._register(panel.onDidDispose(() => { this.dispose(); }));
 
-        model.onUpdate(() => this.update());
         this.update();
+    }
+
+    public dispose() {
+        if (this.isDisposed) {
+            return;
+        }
+
+        this._onDispose.fire();
+        super.dispose();
     }
 
     private get html() {
@@ -144,16 +200,14 @@ export class AbcEditor extends Disposable {
             </html>`;
     }
 
-
-
-    private async update() {
+    public async update() {
         if (this.isDisposed) {
             return;
         }
 
         this.panel.webview.postMessage({
             type: 'setValue',
-            value: this.model.getContents()
+            value: this.model.getContent()
         });
     }
 }

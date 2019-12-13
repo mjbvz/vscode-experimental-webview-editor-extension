@@ -22,17 +22,6 @@
             {
                 "viewType": "testWebviewEditor.abc",
                 "displayName": "Test ABC editor",
-                "documentType": "testWebviewEditorDocument.abc"
-            },
-            {
-                "viewType": "testWebviewEditor.catDraw",
-                "displayName": "Cat Draw",
-                "documentType": "testWebviewEditorDocument.catDraw"
-            }
-        ],
-        "customDocument": [
-            {
-                "documentType": "testWebviewEditorDocument.abc",
                 "selector": [
                     {
                         "filenamePattern": "*.abc"
@@ -40,7 +29,8 @@
                 ]
             },
             {
-                "documentType": "testWebviewEditorDocument.catDraw",
+                "viewType": "testWebviewEditor.catDraw",
+                "displayName": "Cat Draw",
                 "selector": [
                     {
                         "filenamePattern": "*.cat"
