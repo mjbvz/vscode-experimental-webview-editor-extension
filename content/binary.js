@@ -61,16 +61,8 @@
             this.currentStroke.add(x, y)
         }
 
-        undo() {
-            if (!this.strokes.length) {
-                return;
-            }
-            this.strokes.pop();
-            this.listeners.forEach(x => x());
-        }
-
-        redo(points) {
-            this.strokes.push(new Stroke(points));
+        setStrokes( /** @type {Array<Stroke>} */ newStrokes) {
+            this.strokes = newStrokes;
             this.listeners.forEach(x => x());
         }
     }
@@ -196,32 +188,21 @@
     });
 
     const view = new View(document.body, model);
-
     window.addEventListener('message', e => {
         switch (e.data.type) {
             case 'init':
                 init(e.data.value);
                 break;
 
-            case 'save':
-                vscode.postMessage({ type: 'save' })
-                break;
-
-            case 'undo':
-                model.undo()
-                break;
-
-            case 'redo':
-                model.redo(e.data.value);
+            case 'setValue':
+                model.setStrokes(e.data.value.map(x => new Stroke(x)))
                 break;
         }
     });
 
     const state = vscode.getState();
     if (state) {
-        for (const stroke of state.strokes || []) {
-            model.redo(stroke);
-        }
+        model.setStrokes((state.strokes || []).map(x => new Stroke(x)));
         init(state.uri);
     }
 
