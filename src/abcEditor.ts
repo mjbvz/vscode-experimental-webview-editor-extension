@@ -21,6 +21,8 @@ export class AbcEditorProvider implements vscode.WebviewCustomEditorProvider, vs
     private readonly models = new Map<string, AbcModel>();
     private readonly editors = new Map<string, Set<AbcEditor>>();
 
+    private activeEditor?: AbcEditor;
+
     public readonly editingDelegate?: vscode.WebviewCustomEditorEditingDelegate<Edit> = this;
 
     public constructor(
@@ -29,27 +31,35 @@ export class AbcEditorProvider implements vscode.WebviewCustomEditorProvider, vs
     ) { }
 
     public register(): vscode.Disposable {
-        return vscode.window.registerWebviewCustomEditorProvider(AbcEditorProvider.viewType, this);
+        const provider = vscode.window.registerWebviewCustomEditorProvider(AbcEditorProvider.viewType, this);
+
+        const commands: vscode.Disposable[] = [];
+        commands.push(vscode.commands.registerCommand('_abcEditor.edit', (content: string) => {
+            if (!this.activeEditor) {
+                return;
+            }
+            this.activeEditor.pushEdit(content, true);
+        }));
+
+        return vscode.Disposable.from(provider, ...commands);
     }
 
     public async resolveWebviewEditor(resource: vscode.Uri, panel: vscode.WebviewPanel) {
         const model = await this.loadOrCreateModel(resource);
-        const editor = new AbcEditor(this.extensionPath, model, panel, {
-            onEdit: (edit) => {
+        const editor = new AbcEditor(this.extensionPath, model, panel, this.testModeProvider, {
+            onEdit: (edit, external) => {
                 model.pushEdits([edit]);
                 this._onEdit.fire({ resource, edit });
-                this.update(resource, editor);
+                this.update(resource, external ? undefined : editor);
             }
         });
 
-        if (this.testModeProvider.inTestMode) {
-            vscode.commands.executeCommand(customEditorContentChangeEventName, {
-                content: model.getContent(),
-            } as CustomEditorContentChangeEvent);
-        }
-
         // Clean up models when there are no editors for them.
         editor.onDispose(() => {
+            if (this.activeEditor === editor) {
+                this.activeEditor = undefined;
+            }
+
             const entry = this.editors.get(resource.toString());
             if (!entry) {
                 return
@@ -58,6 +68,17 @@ export class AbcEditorProvider implements vscode.WebviewCustomEditorProvider, vs
             if (entry.size === 0) {
                 this.editors.delete(resource.toString());
                 this.models.delete(resource.toString());
+            }
+        });
+
+        this.activeEditor = editor;
+
+        editor.onDidChangeViewState((e) => {
+            if (this.activeEditor === editor && !e.webviewPanel.active) {
+                this.activeEditor = undefined;
+            }
+            if (e.webviewPanel.active) {
+                this.activeEditor = editor;
             }
         });
 
@@ -159,12 +180,16 @@ class AbcEditor extends Disposable {
     public readonly _onDispose = this._register(new vscode.EventEmitter<void>());
     public readonly onDispose = this._onDispose.event;
 
+    public readonly _onDidChangeViewState = this._register(new vscode.EventEmitter<vscode.WebviewPanelOnDidChangeViewStateEvent>());
+    public readonly onDidChangeViewState = this._onDidChangeViewState.event;
+
     constructor(
         private readonly _extensionPath: string,
         private readonly model: AbcModel,
         private readonly panel: vscode.WebviewPanel,
+        private readonly testModeProvider: TestModeProvider,
         private readonly delegate: {
-            onEdit: (edit: Edit) => void
+            onEdit: (edit: Edit, external?: boolean) => void
         }
     ) {
         super();
@@ -177,14 +202,28 @@ class AbcEditor extends Disposable {
         this._register(panel.webview.onDidReceiveMessage(message => {
             switch (message.type) {
                 case 'edit':
-                    this.delegate.onEdit({ value: message.value });
+                    this.pushEdit(message.value);
+                    break;
+
+                case 'didChangeContent':
+                    if (this.testModeProvider.inTestMode) {
+                        vscode.commands.executeCommand(customEditorContentChangeEventName, {
+                            content: message.value,
+                        } as CustomEditorContentChangeEvent);
+                    }
                     break;
             }
         }));
 
         this._register(panel.onDidDispose(() => { this.dispose(); }));
 
+        this._register(panel.onDidChangeViewState(e => { this._onDidChangeViewState.fire(e); }));
+
         this.update();
+    }
+
+    public pushEdit(value: string, external?: boolean) {
+        this.delegate.onEdit({ value }, external);
     }
 
     public dispose() {

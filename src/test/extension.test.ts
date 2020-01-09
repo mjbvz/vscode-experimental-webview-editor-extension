@@ -24,12 +24,18 @@ class CustomEditorUpdateListener {
 	}
 
 	private readonly commandSubscription: vscode.Disposable;
+
+	private unconsumedResponses: Array<CustomEditorContentChangeEvent> = [];
 	private callbackQueue: Array<(data: CustomEditorContentChangeEvent) => void> = [];
 
 	private constructor() {
 		this.commandSubscription = vscode.commands.registerCommand(customEditorContentChangeEventName, (data: CustomEditorContentChangeEvent) => {
-			const callback = this.callbackQueue.shift();
-			callback?.(data);
+			if (this.callbackQueue.length) {
+				const callback = this.callbackQueue.shift();
+				callback?.(data);
+			} else {
+				this.unconsumedResponses.push(data);
+			}
 		});
 	}
 
@@ -37,7 +43,11 @@ class CustomEditorUpdateListener {
 		this.commandSubscription.dispose();
 	}
 
-	waitNextResponse(): Promise<CustomEditorContentChangeEvent> {
+	async nextResponse(): Promise<CustomEditorContentChangeEvent> {
+		if (this.unconsumedResponses.length) {
+			return this.unconsumedResponses.shift()!;
+		}
+
 		return new Promise(resolve => {
 			this.callbackQueue.push(resolve);
 		});
@@ -59,11 +69,42 @@ suite('custom editor tests', () => {
 		const startingContent = await promises.readFile(testDocument.fsPath)
 
 		const listener = CustomEditorUpdateListener.create();
-		const response = listener.waitNextResponse();
 
 		await vscode.commands.executeCommand('vscode.open', testDocument);
 
-		const content = (await response).content;
+		const content = (await listener.nextResponse()).content;
 		assert.equal(content, startingContent.toString());
+	});
+
+	test('Should support basic edits', async () => {
+		const listener = CustomEditorUpdateListener.create();
+
+		await vscode.commands.executeCommand('vscode.open', testDocument);
+		await listener.nextResponse();
+
+		await vscode.commands.executeCommand('_abcEditor.edit', 'xyz');
+		const content = (await listener.nextResponse()).content;
+		assert.equal(content, 'xyz');
+	});
+
+	test('Should support single undo', async () => {
+		const startingContent = await promises.readFile(testDocument.fsPath)
+
+		const listener = CustomEditorUpdateListener.create();
+
+		await vscode.commands.executeCommand('vscode.open', testDocument);
+		await listener.nextResponse();
+
+		{
+			await vscode.commands.executeCommand('_abcEditor.edit', 'xyz');
+			const content = (await listener.nextResponse()).content;
+			assert.equal(content, 'xyz');
+		}
+
+		{
+			await vscode.commands.executeCommand('editor.action.customEditor.undo');
+			const content = (await listener.nextResponse()).content;
+			assert.equal(content, startingContent);
+		}
 	});
 });
