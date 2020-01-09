@@ -8,14 +8,14 @@ interface Edit {
 }
 
 
-export class CatDrawEditorProvider implements vscode.WebviewCustomEditorProvider, vscode.WebviewCustomEditorEditingDelegate {
+export class CatDrawEditorProvider implements vscode.WebviewCustomEditorProvider, vscode.WebviewCustomEditorEditingDelegate<Edit> {
 
     public static readonly viewType = 'testWebviewEditor.catDraw';
 
     private readonly models = new Map<string, CatDrawModel>();
     private readonly editors = new Map<string, Set<CatDrawEditor>>();
 
-    public readonly editingDelegate?: vscode.WebviewCustomEditorEditingDelegate = this;
+    public readonly editingDelegate?: vscode.WebviewCustomEditorEditingDelegate<Edit> = this;
 
     public constructor(
         private readonly extensionPath: string

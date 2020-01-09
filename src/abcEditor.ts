@@ -2,18 +2,25 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { Disposable } from './dispose';
 
+
+export const customEditorContentChangeEventName = '_abcEditor.contentChange';
+
+export interface CustomEditorContentChangeEvent {
+    content: string;
+}
+
 interface Edit {
     readonly value: string;
 }
 
-export class AbcEditorProvider implements vscode.WebviewCustomEditorProvider, vscode.WebviewCustomEditorEditingDelegate {
+export class AbcEditorProvider implements vscode.WebviewCustomEditorProvider, vscode.WebviewCustomEditorEditingDelegate<Edit> {
 
     public static readonly viewType = 'testWebviewEditor.abc';
 
     private readonly models = new Map<string, AbcModel>();
     private readonly editors = new Map<string, Set<AbcEditor>>();
 
-    public readonly editingDelegate?: vscode.WebviewCustomEditorEditingDelegate = this;
+    public readonly editingDelegate?: vscode.WebviewCustomEditorEditingDelegate<Edit> = this;
 
     public constructor(
         private readonly extensionPath: string
