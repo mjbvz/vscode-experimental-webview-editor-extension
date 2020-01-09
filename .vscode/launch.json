@@ -19,15 +19,16 @@
 			"preLaunchTask": "npm: watch"
 		},
 		{
+			"name": "Run tests",
 			"type": "extensionHost",
 			"request": "launch",
-			"name": "test",
 			"runtimeExecutable": "${execPath}",
 			"args": [
 				"${workspaceFolder}/testWorkspace",
 				"--extensionDevelopmentPath=${workspaceFolder}",
-				"--extensionTestsPath=${workspaceFolder}/out/src/test"
+				"--extensionTestsPath=${workspaceFolder}/out/test"
 			],
+			"sourceMaps": true,
 			"outFiles": [
 				"${workspaceFolder}/out/**/*.js"
 			],

@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { Disposable } from './dispose';
+import { TestModeProvider } from './testing';
 
 
 export const customEditorContentChangeEventName = '_abcEditor.contentChange';
@@ -23,7 +24,8 @@ export class AbcEditorProvider implements vscode.WebviewCustomEditorProvider, vs
     public readonly editingDelegate?: vscode.WebviewCustomEditorEditingDelegate<Edit> = this;
 
     public constructor(
-        private readonly extensionPath: string
+        private readonly extensionPath: string,
+        private readonly testModeProvider: TestModeProvider,
     ) { }
 
     public register(): vscode.Disposable {
@@ -39,6 +41,12 @@ export class AbcEditorProvider implements vscode.WebviewCustomEditorProvider, vs
                 this.update(resource, editor);
             }
         });
+
+        if (this.testModeProvider.inTestMode) {
+            vscode.commands.executeCommand(customEditorContentChangeEventName, {
+                content: model.getContent(),
+            } as CustomEditorContentChangeEvent);
+        }
 
         // Clean up models when there are no editors for them.
         editor.onDispose(() => {

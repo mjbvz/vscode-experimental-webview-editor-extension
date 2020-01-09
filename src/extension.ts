@@ -1,10 +1,13 @@
 import * as vscode from 'vscode';
 import { AbcEditorProvider } from './abcEditor';
-import { CatDrawEditor, CatDrawEditorProvider } from './binaryEditor';
+import { CatDrawEditorProvider } from './binaryEditor';
+import { TestModeProvider } from './testing';
 
 export function activate(context: vscode.ExtensionContext) {
-    context.subscriptions.push(new AbcEditorProvider(context.extensionPath).register());
+    const testModeProvider = new TestModeProvider();
     
-    context.subscriptions.push(new CatDrawEditorProvider(context.extensionPath).register());
+    context.subscriptions.push(new AbcEditorProvider(context.extensionPath, testModeProvider).register());
     
+    context.subscriptions.push(new CatDrawEditorProvider(context.extensionPath).register()); 
 }
+

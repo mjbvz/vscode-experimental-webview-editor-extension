@@ -12,11 +12,11 @@
         "Other"
     ],
     "activationEvents": [
-        "onCommand:extension.sayHello",
+        "onCommand:customEditorSamples.enableTestMode",
         "onWebviewEditor:testWebviewEditor.abc",
         "onWebviewEditor:testWebviewEditor.catDraw"
     ],
-    "main": "./out/src/extension",
+    "main": "./out/extension",
     "contributes": {
         "webviewEditors": [
             {
@@ -43,7 +43,7 @@
         "vscode:prepublish": "tsc -p ./",
         "compile": "tsc -p ./",
         "watch": "tsc -watch -p ./",
-        "test": "node ./out/src/test/runTest.js"
+        "test": "node ./out/test/runTest.js"
     },
     "devDependencies": {
         "@types/glob": "^7.1.1",
