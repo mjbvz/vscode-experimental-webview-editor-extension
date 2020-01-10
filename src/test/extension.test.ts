@@ -168,6 +168,52 @@ suite('custom editor tests', () => {
 		assert.equal(response.source.toString(), newFileName.toString());
 	});
 
+	test('Should support saving custom editors', async () => {
+		const listener = CustomEditorUpdateListener.create();
+
+		await vscode.commands.executeCommand('vscode.open', testDocument);
+		await listener.nextResponse();
+
+		const newContent = `new-${Date.now()}`;
+		{
+			await vscode.commands.executeCommand('_abcEditor.edit', newContent);
+			const content = (await listener.nextResponse()).content;
+			assert.equal(content, newContent);
+		}
+		{
+			await vscode.commands.executeCommand('workbench.action.files.save');
+			const fileContent = await promises.readFile(testDocument.fsPath)
+			assert.equal(fileContent, newContent);
+		}
+	});
+
+	test('Should undo after saving custom editor', async () => {
+		const startingContent = await promises.readFile(testDocument.fsPath)
+
+		const listener = CustomEditorUpdateListener.create();
+
+		await vscode.commands.executeCommand('vscode.open', testDocument);
+		await listener.nextResponse();
+
+		const newContent = `new-${Date.now()}`;
+		{
+			await vscode.commands.executeCommand('_abcEditor.edit', newContent);
+			const content = (await listener.nextResponse()).content;
+			assert.equal(content, newContent);
+		}
+		{
+			await vscode.commands.executeCommand('workbench.action.files.save');
+			const fileContent = await promises.readFile(testDocument.fsPath)
+			assert.equal(fileContent, newContent);
+		}
+		{
+			await vscode.commands.executeCommand('editor.action.customEditor.undo');
+			const content = (await listener.nextResponse()).content;
+			assert.equal(content, startingContent);
+		}
+	});
+
+
 	test('Should support untitled custom editors', async () => {
 		const listener = CustomEditorUpdateListener.create();
 
@@ -179,7 +225,7 @@ suite('custom editor tests', () => {
 
 		await vscode.commands.executeCommand('_abcEditor.edit', `123`);
 		assert.equal((await listener.nextResponse()).content, '123');
-		
+
 		await vscode.commands.executeCommand('workbench.action.files.save');
 		const content = await promises.readFile(path.join(testWorkspaceRoot, testFileName));
 		assert.equal(content.toString(), '123');
