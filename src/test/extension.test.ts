@@ -1,14 +1,16 @@
 import * as assert from 'assert';
+import { spawnSync } from 'child_process';
+import { promises } from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { CustomEditorContentChangeEvent, customEditorContentChangeEventName } from '../abcEditor';
 import { disposeAll } from '../dispose';
-import { closeAllEditors, wait } from './testUtils';
 import { enableTestModeCommandName } from '../testing';
-import { promises } from 'fs';
+import { closeAllEditors } from './testUtils';
 
 
-const testDocument = vscode.Uri.file(path.join(vscode.workspace.rootPath || '', 'x.abc'));
+const testWorkspaceRoot = vscode.workspace.rootPath || '';
+const testDocument = vscode.Uri.file(path.join(testWorkspaceRoot, 'x.abc'));
 
 const disposables: vscode.Disposable[] = [];
 
@@ -56,14 +58,19 @@ class CustomEditorUpdateListener {
 
 
 suite('custom editor tests', () => {
-	teardown(async () => {
-		await closeAllEditors();
-		disposeAll(disposables);
-	});
-
 	setup((async () => {
+		resetTestWorkspace();
+
 		await vscode.commands.executeCommand(enableTestModeCommandName, true);
 	}));
+
+	teardown(async () => {
+		await closeAllEditors();
+
+		disposeAll(disposables);
+
+		resetTestWorkspace();
+	});
 
 	test('Should load basic content from disk', async () => {
 		const startingContent = await promises.readFile(testDocument.fsPath)
@@ -107,4 +114,79 @@ suite('custom editor tests', () => {
 			assert.equal(content, startingContent);
 		}
 	});
+
+	test('Should support multiple undo', async () => {
+		const startingContent = await promises.readFile(testDocument.fsPath)
+
+		const listener = CustomEditorUpdateListener.create();
+
+		await vscode.commands.executeCommand('vscode.open', testDocument);
+		await listener.nextResponse();
+
+
+		const count = 10;
+
+		// Make edits
+		for (let i = 0; i < count; ++i) {
+			await vscode.commands.executeCommand('_abcEditor.edit', `${i}`);
+			const content = (await listener.nextResponse()).content;
+			assert.equal(`${i}`, content);
+		}
+
+		// Then undo them in order
+		for (let i = count - 1; i; --i) {
+			await vscode.commands.executeCommand('editor.action.customEditor.undo');
+			const content = (await listener.nextResponse()).content;
+			assert.equal(`${i - 1}`, content);
+		}
+
+		{
+			await vscode.commands.executeCommand('editor.action.customEditor.undo');
+			const content = (await listener.nextResponse()).content;
+			assert.equal(content, startingContent);
+		}
+	});
+
+	test('Should update custom editor on file move', async () => {
+		const startingContent = await promises.readFile(testDocument.fsPath)
+
+		const listener = CustomEditorUpdateListener.create();
+
+		await vscode.commands.executeCommand('vscode.open', testDocument);
+		await listener.nextResponse();
+
+
+		const newFileName = vscode.Uri.file(path.join(testWorkspaceRoot, 'y.abc'));
+
+		const edit = new vscode.WorkspaceEdit();
+		edit.renameFile(testDocument, newFileName);
+
+		await vscode.workspace.applyEdit(edit);
+
+		const response = (await listener.nextResponse());
+		assert.equal(response.content, startingContent);
+		assert.equal(response.source.toString(), newFileName.toString());
+	});
+
+	test('Should support untitled custom editors', async () => {
+		const listener = CustomEditorUpdateListener.create();
+
+		const testFileName = 'z.abc';
+		const untitledFile = vscode.Uri.parse(`untitled:${testFileName}`);
+
+		await vscode.commands.executeCommand('vscode.open', untitledFile);
+		assert.equal((await listener.nextResponse()).content, '');
+
+		await vscode.commands.executeCommand('_abcEditor.edit', `123`);
+		assert.equal((await listener.nextResponse()).content, '123');
+		
+		await vscode.commands.executeCommand('workbench.action.files.save');
+		const content = await promises.readFile(path.join(testWorkspaceRoot, testFileName));
+		assert.equal(content.toString(), '123');
+	});
 });
+
+function resetTestWorkspace() {
+	spawnSync(`git checkout -- "${testWorkspaceRoot}"`, { shell: true, cwd: testWorkspaceRoot });
+	spawnSync(`git clean -f "${testWorkspaceRoot}"`, { shell: true, cwd: testWorkspaceRoot });
+}

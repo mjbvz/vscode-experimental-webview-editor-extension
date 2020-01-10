@@ -8,6 +8,7 @@ export const customEditorContentChangeEventName = '_abcEditor.contentChange';
 
 export interface CustomEditorContentChangeEvent {
     content: string;
+    source: vscode.Uri;
 }
 
 interface Edit {
@@ -46,7 +47,7 @@ export class AbcEditorProvider implements vscode.WebviewCustomEditorProvider, vs
 
     public async resolveWebviewEditor(resource: vscode.Uri, panel: vscode.WebviewPanel) {
         const model = await this.loadOrCreateModel(resource);
-        const editor = new AbcEditor(this.extensionPath, model, panel, this.testModeProvider, {
+        const editor = new AbcEditor(resource, this.extensionPath, model, panel, this.testModeProvider, {
             onEdit: (edit, external) => {
                 model.pushEdits([edit]);
                 this._onEdit.fire({ resource, edit });
@@ -111,7 +112,13 @@ export class AbcEditorProvider implements vscode.WebviewCustomEditorProvider, vs
 
     public async save(resource: vscode.Uri): Promise<void> {
         const model = this.getModel(resource);
-        await vscode.workspace.fs.writeFile(resource, Buffer.from(model.getContent()));
+
+        let pathToWrite = resource;
+        if (resource.scheme === 'untitled') {
+            pathToWrite = vscode.Uri.file(path.join(vscode.workspace.rootPath!, resource.path));
+        }
+
+        await vscode.workspace.fs.writeFile(pathToWrite, Buffer.from(model.getContent()));
     }
 
     public async saveAs(resource: vscode.Uri, targetResource: vscode.Uri): Promise<void> {
@@ -151,6 +158,10 @@ export class AbcModel {
     private readonly _edits: Edit[] = [];
 
     public static async create(resource: vscode.Uri): Promise<AbcModel> {
+        if (resource.scheme === 'untitled') {
+            return new AbcModel('');
+        }
+
         const buffer = await vscode.workspace.fs.readFile(resource);
         const initialValue = Buffer.from(buffer).toString('utf8')
         return new AbcModel(initialValue);
@@ -184,6 +195,7 @@ class AbcEditor extends Disposable {
     public readonly onDidChangeViewState = this._onDidChangeViewState.event;
 
     constructor(
+        private readonly resource: vscode.Uri,
         private readonly _extensionPath: string,
         private readonly model: AbcModel,
         private readonly panel: vscode.WebviewPanel,
@@ -209,6 +221,7 @@ class AbcEditor extends Disposable {
                     if (this.testModeProvider.inTestMode) {
                         vscode.commands.executeCommand(customEditorContentChangeEventName, {
                             content: message.value,
+                            source: resource
                         } as CustomEditorContentChangeEvent);
                     }
                     break;
