@@ -213,7 +213,6 @@ suite('custom editor tests', () => {
 		}
 	});
 
-
 	test('Should support untitled custom editors', async () => {
 		const listener = CustomEditorUpdateListener.create();
 
@@ -229,6 +228,36 @@ suite('custom editor tests', () => {
 		await vscode.commands.executeCommand('workbench.action.files.save');
 		const content = await promises.readFile(path.join(testWorkspaceRoot, testFileName));
 		assert.equal(content.toString(), '123');
+	});
+
+	test('When switching away from a non-default custom editors and then back, we should continue using the non-default editor', async () => {
+		const startingContent = await promises.readFile(testDocument.fsPath)
+
+		const listener = CustomEditorUpdateListener.create();
+
+		{
+			await vscode.commands.executeCommand('vscode.open', testDocument, { preview: false });
+			const content = (await listener.nextResponse()).content;
+			assert.equal(content, startingContent.toString());
+			assert.ok(!vscode.window.activeTextEditor);
+
+		}
+		
+		// Switch to non-default editor
+		await vscode.commands.executeCommand('vscode.openWith', testDocument, 'default', { preview: false });
+		assert.ok(!vscode.window.activeTextEditor)
+
+		// Then open a new document (hiding existing one)
+		await vscode.commands.executeCommand('vscode.open',  vscode.Uri.file(path.join(testWorkspaceRoot, 'other.json')));
+		assert.ok(vscode.window.activeTextEditor)
+
+		// And then back
+		await vscode.commands.executeCommand('workbench.action.navigateBack');
+		await vscode.commands.executeCommand('workbench.action.navigateBack');
+
+		// Make sure we have the file on as text
+		assert.ok(vscode.window.activeTextEditor);
+		assert.strictEqual(vscode.window.activeTextEditor?.document.uri.toString(), testDocument.toString());
 	});
 });
 
