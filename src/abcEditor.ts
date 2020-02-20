@@ -1,7 +1,9 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
+import * as fs from 'fs';
 import { Disposable } from './dispose';
 import { TestModeProvider } from './testing';
+import * as crypto from 'crypto';
 
 
 export const customEditorContentChangeEventName = '_abcEditor.contentChange';
@@ -27,7 +29,7 @@ export class AbcEditorProvider implements vscode.WebviewCustomEditorProvider, vs
     public readonly editingDelegate?: vscode.WebviewCustomEditorEditingDelegate<Edit> = this;
 
     public constructor(
-        private readonly extensionPath: string,
+        private readonly context: vscode.ExtensionContext,
         private readonly testModeProvider: TestModeProvider,
     ) { }
 
@@ -47,7 +49,7 @@ export class AbcEditorProvider implements vscode.WebviewCustomEditorProvider, vs
 
     public async resolveWebviewEditor(resource: vscode.Uri, panel: vscode.WebviewPanel) {
         const model = await this.loadOrCreateModel(resource);
-        const editor = new AbcEditor(resource, this.extensionPath, model, panel, this.testModeProvider, {
+        const editor = new AbcEditor(resource, this.context.extensionPath, model, panel, this.testModeProvider, {
             onEdit: (edit, external) => {
                 model.pushEdits([edit]);
                 this._onEdit.fire({ resource, edit });
@@ -97,7 +99,9 @@ export class AbcEditorProvider implements vscode.WebviewCustomEditorProvider, vs
             return existing;
         }
 
-        const newModel = await AbcModel.create(resource);
+        const backupResource = await this.getBackupResource(resource);
+        const hasBackup = fs.existsSync(backupResource);
+        const newModel = await AbcModel.create(resource, hasBackup ? vscode.Uri.file(backupResource) : undefined);
         this.models.set(resource.toString(), newModel);
         return newModel;
     }
@@ -118,27 +122,47 @@ export class AbcEditorProvider implements vscode.WebviewCustomEditorProvider, vs
             pathToWrite = vscode.Uri.file(path.join(vscode.workspace.rootPath!, resource.path));
         }
 
+        const backupResource = await this.getBackupResource(resource);
         await vscode.workspace.fs.writeFile(pathToWrite, Buffer.from(model.getContent()));
+        if (fs.existsSync(backupResource)) {
+            await fs.promises.unlink(backupResource);
+        }
     }
 
     public async saveAs(resource: vscode.Uri, targetResource: vscode.Uri): Promise<void> {
         const model = this.getModel(resource);
+        const backupResource = await this.getBackupResource(resource);s
         await vscode.workspace.fs.writeFile(targetResource, Buffer.from(model.getContent()));
+
+        if (fs.existsSync(backupResource)) {
+            await fs.promises.unlink(backupResource);
+        }
     }
 
     private readonly _onEdit = new vscode.EventEmitter<{ readonly resource: vscode.Uri, readonly edit: Edit }>();
     public readonly onEdit = this._onEdit.event;
 
-    async applyEdits(resource: vscode.Uri, edits: readonly any[]): Promise<void> {
+    async applyEdits(resource: vscode.Uri, edits: readonly Edit[]): Promise<void> {
         const model = this.getModel(resource);
         model.pushEdits(edits);
         this.update(resource);
     }
 
-    async undoEdits(resource: vscode.Uri, edits: readonly any[]): Promise<void> {
+    async undoEdits(resource: vscode.Uri, edits: readonly Edit[]): Promise<void> {
         const model = this.getModel(resource);
         model.popEdits(edits);
         this.update(resource);
+    }
+
+    async backup(resource: vscode.Uri, cancellation: vscode.CancellationToken): Promise<boolean> {
+        const existing = this.models.get(resource.toString());
+        if (!existing) {
+            return false;
+        }
+        const backupResource = await this.getBackupResource(resource);
+        console.log(`Backing up ${resource} to ${backupResource}`);
+        await fs.promises.writeFile(backupResource, existing.getContent());
+        return true;
     }
 
     private update(resource: vscode.Uri, trigger?: AbcEditor) {
@@ -152,17 +176,37 @@ export class AbcEditorProvider implements vscode.WebviewCustomEditorProvider, vs
             }
         }
     }
+
+    private async getBackupResource(resource: vscode.Uri): Promise<string> {
+        const backupPath = await this.getBackupPath();
+        return path.join(backupPath, this.hashPath(resource));
+    }
+
+    private async getBackupPath(): Promise<string> {
+        const backupPath = path.join(this.context.storagePath!, 'backups');
+        await fs.promises.mkdir(backupPath, { recursive: true })
+        return backupPath;
+    }
+
+    private hashPath(resource: vscode.Uri): string {
+        const str = resource.scheme === 'file' || resource.scheme === 'untitled' ? resource.fsPath : resource.toString();
+        return crypto.createHash('sha256').update(str, 'utf8').digest('hex')
+    }
 }
 
 export class AbcModel {
     private readonly _edits: Edit[] = [];
 
-    public static async create(resource: vscode.Uri): Promise<AbcModel> {
+    public static async create(resource: vscode.Uri, backupResource: vscode.Uri | undefined): Promise<AbcModel> {
         if (resource.scheme === 'untitled') {
             return new AbcModel('');
         }
 
-        const buffer = await vscode.workspace.fs.readFile(resource);
+        if (backupResource) {
+            console.log('restoring from backup');
+        }
+
+        const buffer = await vscode.workspace.fs.readFile(backupResource ?? resource);
         const initialValue = Buffer.from(buffer).toString('utf8')
         return new AbcModel(initialValue);
     }
