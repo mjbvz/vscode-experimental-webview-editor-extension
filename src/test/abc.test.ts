@@ -263,11 +263,12 @@ suite('Abc editor tests', () => {
 
 		// Switch to non-default editor
 		await vscode.commands.executeCommand(commands.openWith, testDocument, 'default', { preview: false });
-		assert.ok(!vscode.window.activeTextEditor)
+		assert.strictEqual(vscode.window.activeTextEditor?.document.uri.toString(), testDocument.toString())
 
 		// Then open a new document (hiding existing one)
-		await vscode.commands.executeCommand(commands.open, vscode.Uri.file(path.join(testWorkspaceRoot.fsPath, 'other.json')));
-		assert.ok(vscode.window.activeTextEditor)
+		const otherFile = vscode.Uri.file(path.join(testWorkspaceRoot.fsPath, 'other.json'));
+		await vscode.commands.executeCommand(commands.open, otherFile);
+		assert.strictEqual(vscode.window.activeTextEditor?.document.uri.toString(), otherFile.toString())
 
 		// And then back
 		await vscode.commands.executeCommand('workbench.action.navigateBack');
