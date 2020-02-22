@@ -4,7 +4,10 @@ import * as vscode from 'vscode';
 import { Disposable } from './dispose';
 import { TestModeProvider } from './testing';
 
-export const customEditorContentChangeEventName = '_abcEditor.contentChange';
+export namespace Testing {
+    export const abcEditorContentChangeCommandName = '_abcEditor.contentChange';
+    export const abcEditorTypeCommand = '_abcEditor.type';
+}
 
 export interface CustomEditorContentChangeEvent {
     content: string;
@@ -15,7 +18,6 @@ export class AbcEditorProvider implements vscode.WebviewTextEditorProvider {
 
     public static readonly viewType = 'testWebviewEditor.abc';
 
-    private readonly editors = new Map<string, Set<AbcEditor>>();
     private activeEditor?: AbcEditor;
 
     public constructor(
@@ -27,8 +29,8 @@ export class AbcEditorProvider implements vscode.WebviewTextEditorProvider {
         const provider = vscode.window.registerWebviewTextEditorProvider(AbcEditorProvider.viewType, this);
 
         const commands: vscode.Disposable[] = [];
-        commands.push(vscode.commands.registerCommand('_abcEditor.edit', (content: string) => {
-            this.activeEditor?.forceUpdateWebviewContent(content);
+        commands.push(vscode.commands.registerCommand(Testing.abcEditorTypeCommand, (content: string) => {
+            this.activeEditor?.testing_fakeInput(content);
         }));
 
         return vscode.Disposable.from(provider, ...commands);
@@ -39,22 +41,14 @@ export class AbcEditorProvider implements vscode.WebviewTextEditorProvider {
 
         this.activeEditor = editor;
 
-        editor.onDidChangeViewState((e) => {
-            if (this.activeEditor === editor && !e.webviewPanel.active) {
+        panel.onDidChangeViewState(({ webviewPanel }) => {
+            if (this.activeEditor === editor && !webviewPanel.active) {
                 this.activeEditor = undefined;
             }
-            if (e.webviewPanel.active) {
+            if (webviewPanel.active) {
                 this.activeEditor = editor;
             }
         });
-
-        let editorSet = this.editors.get(document.uri.toString());
-        if (!editorSet) {
-            editorSet = new Set();
-            this.editors.set(document.uri.toString(), editorSet);
-        }
-        editorSet.add(editor);
-        editor.onDispose(() => { editorSet?.delete(editor); });
     }
 }
 
@@ -62,9 +56,6 @@ class AbcEditor extends Disposable {
 
     public readonly _onDispose = this._register(new vscode.EventEmitter<void>());
     public readonly onDispose = this._onDispose.event;
-
-    public readonly _onDidChangeViewState = this._register(new vscode.EventEmitter<vscode.WebviewPanelOnDidChangeViewStateEvent>());
-    public readonly onDidChangeViewState = this._onDidChangeViewState.event;
 
     private readonly limit = pLimit(1);
     private syncedVersion: number = -1;
@@ -97,7 +88,7 @@ class AbcEditor extends Disposable {
 
                 case 'didChangeContent':
                     if (this.testModeProvider.inTestMode) {
-                        vscode.commands.executeCommand(customEditorContentChangeEventName, {
+                        vscode.commands.executeCommand(Testing.abcEditorContentChangeCommandName, {
                             content: message.value,
                             source: document.uri,
                         } as CustomEditorContentChangeEvent);
@@ -108,12 +99,10 @@ class AbcEditor extends Disposable {
 
         this._register(panel.onDidDispose(() => { this.dispose(); }));
 
-        this._register(panel.onDidChangeViewState(e => { this._onDidChangeViewState.fire(e); }));
-
         this.update();
     }
 
-    public forceUpdateWebviewContent(value: string) {
+    public testing_fakeInput(value: string) {
         this.panel.webview.postMessage({
             type: 'fakeInput',
             value: value,
