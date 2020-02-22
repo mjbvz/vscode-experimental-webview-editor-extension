@@ -6,7 +6,7 @@ import * as vscode from 'vscode';
 import { CustomEditorContentChangeEvent, customEditorContentChangeEventName } from '../abcEditor';
 import { disposeAll } from '../dispose';
 import { enableTestModeCommandName } from '../testing';
-import { closeAllEditors } from './testUtils';
+import { closeAllEditors, wait } from './testUtils';
 
 
 const testWorkspaceRoot = vscode.workspace.rootPath || '';
@@ -102,12 +102,13 @@ suite('custom editor tests', () => {
 		await vscode.commands.executeCommand('vscode.open', testDocument);
 		await listener.nextResponse();
 
+		const newContent = `xyz ${Date.now()}`;
 		{
-			await vscode.commands.executeCommand('_abcEditor.edit', 'xyz');
+			await vscode.commands.executeCommand('_abcEditor.edit', newContent);
 			const content = (await listener.nextResponse()).content;
-			assert.equal(content, 'xyz');
+			assert.equal(content, newContent);
 		}
-
+		await wait(100);
 		{
 			await vscode.commands.executeCommand('editor.action.customEditor.undo');
 			const content = (await listener.nextResponse()).content;
@@ -133,14 +134,18 @@ suite('custom editor tests', () => {
 			assert.equal(`${i}`, content);
 		}
 
+
 		// Then undo them in order
 		for (let i = count - 1; i; --i) {
+			await wait(100);
 			await vscode.commands.executeCommand('editor.action.customEditor.undo');
 			const content = (await listener.nextResponse()).content;
 			assert.equal(`${i - 1}`, content);
 		}
 
+		
 		{
+			await wait(100);
 			await vscode.commands.executeCommand('editor.action.customEditor.undo');
 			const content = (await listener.nextResponse()).content;
 			assert.equal(content, startingContent);
@@ -206,6 +211,7 @@ suite('custom editor tests', () => {
 			const fileContent = await promises.readFile(testDocument.fsPath)
 			assert.equal(fileContent, newContent);
 		}
+		await wait(100);
 		{
 			await vscode.commands.executeCommand('editor.action.customEditor.undo');
 			const content = (await listener.nextResponse()).content;
@@ -242,13 +248,13 @@ suite('custom editor tests', () => {
 			assert.ok(!vscode.window.activeTextEditor);
 
 		}
-		
+
 		// Switch to non-default editor
 		await vscode.commands.executeCommand('vscode.openWith', testDocument, 'default', { preview: false });
 		assert.ok(!vscode.window.activeTextEditor)
 
 		// Then open a new document (hiding existing one)
-		await vscode.commands.executeCommand('vscode.open',  vscode.Uri.file(path.join(testWorkspaceRoot, 'other.json')));
+		await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(path.join(testWorkspaceRoot, 'other.json')));
 		assert.ok(vscode.window.activeTextEditor)
 
 		// And then back

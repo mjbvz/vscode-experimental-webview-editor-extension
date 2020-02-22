@@ -42,8 +42,7 @@
     "scripts": {
         "vscode:prepublish": "tsc -p ./",
         "compile": "tsc -p ./",
-        "watch": "tsc -watch -p ./",
-        "test": "node ./out/test/runTest.js"
+        "watch": "tsc -watch -p ./"
     },
     "devDependencies": {
         "@types/glob": "^7.1.1",
@@ -54,5 +53,7 @@
         "typescript": "^3.7.2",
         "vscode-test": "^1.2.2"
     },
-    "dependencies": {}
+    "dependencies": {
+        "p-limit": "^2.2.2"
+    }
 }

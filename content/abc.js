@@ -11,30 +11,41 @@
 
     window.addEventListener('message', e => {
         switch (e.data.type) {
-            case 'setValue':
-                const value = e.data.value;
-                textArea.value = value;
-                vscode.setState({ value });
+            case 'fakeInput':
+                {
+                    const value = e.data.value;
+                    textArea.value = value;
+                    onInput();
+                    break;
+                }
 
-                vscode.postMessage({
-                    type: 'didChangeContent',
-                    value: value
-                });
-                break;
+            case 'setValue':
+                {
+                    const value = e.data.value;
+                    textArea.value = value;
+                    vscode.setState({ value });
+
+                    vscode.postMessage({
+                        type: 'didChangeContent',
+                        value: value
+                    });
+                    break;
+                }
         }
     });
 
-    textArea.addEventListener('input', e => {
+    const onInput = () => {        
         const value = textArea.value;
         vscode.setState({ value });
         vscode.postMessage({
             type: 'edit',
             value: value
         });
-
         vscode.postMessage({
             type: 'didChangeContent',
             value: value
         });
-    });
+    };
+    
+    textArea.addEventListener('input', onInput);
 }());
