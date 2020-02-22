@@ -61,7 +61,7 @@ class CustomEditorUpdateListener {
 }
 
 
-suite('custom editor tests', () => {
+suite('Abc editor tests', () => {
 	setup((async () => {
 		resetTestWorkspace();
 
