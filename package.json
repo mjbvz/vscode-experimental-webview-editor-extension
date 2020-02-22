@@ -6,7 +6,7 @@
     "enableProposedApi": true,
     "publisher": "bierner",
     "engines": {
-        "vscode": "^1.41.0"
+        "vscode": "^1.43.0"
     },
     "categories": [
         "Other"
