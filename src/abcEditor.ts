@@ -5,14 +5,15 @@ import { Disposable } from './dispose';
 import { TestModeProvider } from './testing';
 
 export namespace Testing {
-    export const abcEditorContentChangeCommandName = '_abcEditor.contentChange';
+    export const abcEditorContentChangeCommand = '_abcEditor.contentChange';
     export const abcEditorTypeCommand = '_abcEditor.type';
+
+    export interface CustomEditorContentChangeEvent {
+        readonly content: string;
+        readonly source: vscode.Uri;
+    }
 }
 
-export interface CustomEditorContentChangeEvent {
-    content: string;
-    source: vscode.Uri;
-}
 
 export class AbcEditorProvider implements vscode.WebviewTextEditorProvider {
 
@@ -88,10 +89,10 @@ class AbcEditor extends Disposable {
 
                 case 'didChangeContent':
                     if (this.testModeProvider.inTestMode) {
-                        vscode.commands.executeCommand(Testing.abcEditorContentChangeCommandName, {
+                        vscode.commands.executeCommand(Testing.abcEditorContentChangeCommand, {
                             content: message.value,
                             source: document.uri,
-                        } as CustomEditorContentChangeEvent);
+                        } as Testing.CustomEditorContentChangeEvent);
                     }
                     break;
             }

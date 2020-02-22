@@ -3,17 +3,21 @@ import { spawnSync } from 'child_process';
 import { promises } from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { CustomEditorContentChangeEvent, Testing } from '../abcEditor';
+import { Testing } from '../abcEditor';
 import { disposeAll } from '../dispose';
 import { enableTestModeCommandName } from '../testing';
 import { closeAllEditors, createRandomFile, wait } from './testUtils';
 
-const undoCommand = 'editor.action.customEditor.undo';
+const commands = Object.freeze({
+	open: 'vscode.open',
+	openWith: 'vscode.openWith',
+	save: 'workbench.action.files.save',
+	undo: 'editor.action.customEditor.undo',
+});
 
 const testWorkspaceRoot = vscode.Uri.file(vscode.workspace.rootPath || '');
 
 const disposables: vscode.Disposable[] = [];
-
 function _register<T extends vscode.Disposable>(disposable: T) {
 	disposables.push(disposable);
 	return disposable;
@@ -27,11 +31,11 @@ class CustomEditorUpdateListener {
 
 	private readonly commandSubscription: vscode.Disposable;
 
-	private unconsumedResponses: Array<CustomEditorContentChangeEvent> = [];
-	private callbackQueue: Array<(data: CustomEditorContentChangeEvent) => void> = [];
+	private readonly unconsumedResponses: Array<Testing.CustomEditorContentChangeEvent> = [];
+	private readonly callbackQueue: Array<(data: Testing.CustomEditorContentChangeEvent) => void> = [];
 
 	private constructor() {
-		this.commandSubscription = vscode.commands.registerCommand(Testing.abcEditorContentChangeCommandName, (data: CustomEditorContentChangeEvent) => {
+		this.commandSubscription = vscode.commands.registerCommand(Testing.abcEditorContentChangeCommand, (data: Testing.CustomEditorContentChangeEvent) => {
 			if (this.callbackQueue.length) {
 				const callback = this.callbackQueue.shift();
 				callback?.(data);
@@ -45,7 +49,7 @@ class CustomEditorUpdateListener {
 		this.commandSubscription.dispose();
 	}
 
-	async nextResponse(): Promise<CustomEditorContentChangeEvent> {
+	async nextResponse(): Promise<Testing.CustomEditorContentChangeEvent> {
 		if (this.unconsumedResponses.length) {
 			return this.unconsumedResponses.shift()!;
 		}
@@ -78,7 +82,7 @@ suite('custom editor tests', () => {
 
 		const listener = CustomEditorUpdateListener.create();
 
-		await vscode.commands.executeCommand('vscode.open', testDocument);
+		await vscode.commands.executeCommand(commands.open, testDocument);
 
 		const { content } = await listener.nextResponse();
 		assert.equal(content, startingContent);
@@ -90,7 +94,7 @@ suite('custom editor tests', () => {
 
 		const listener = CustomEditorUpdateListener.create();
 
-		await vscode.commands.executeCommand('vscode.open', testDocument);
+		await vscode.commands.executeCommand(commands.open, testDocument);
 		await listener.nextResponse();
 
 		const newContent = `basic edit test ${Date.now()}`;
@@ -105,7 +109,7 @@ suite('custom editor tests', () => {
 
 		const listener = CustomEditorUpdateListener.create();
 
-		await vscode.commands.executeCommand('vscode.open', testDocument);
+		await vscode.commands.executeCommand(commands.open, testDocument);
 		await listener.nextResponse();
 
 		const newContent = `undo test ${Date.now()}`;
@@ -116,7 +120,7 @@ suite('custom editor tests', () => {
 		}
 		await wait(100);
 		{
-			await vscode.commands.executeCommand(undoCommand);
+			await vscode.commands.executeCommand(commands.undo);
 			const { content } = await listener.nextResponse();
 			assert.equal(content, startingContent);
 		}
@@ -128,7 +132,7 @@ suite('custom editor tests', () => {
 
 		const listener = CustomEditorUpdateListener.create();
 
-		await vscode.commands.executeCommand('vscode.open', testDocument);
+		await vscode.commands.executeCommand(commands.open, testDocument);
 		await listener.nextResponse();
 
 		const count = 10;
@@ -143,14 +147,14 @@ suite('custom editor tests', () => {
 		// Then undo them in order
 		for (let i = count - 1; i; --i) {
 			await wait(100);
-			await vscode.commands.executeCommand(undoCommand);
+			await vscode.commands.executeCommand(commands.undo);
 			const { content } = await listener.nextResponse();
 			assert.equal(`${i - 1}`, content);
 		}
 
 		{
 			await wait(100);
-			await vscode.commands.executeCommand(undoCommand);
+			await vscode.commands.executeCommand(commands.undo);
 			const { content } = await listener.nextResponse();
 			assert.equal(content, startingContent);
 		}
@@ -162,7 +166,7 @@ suite('custom editor tests', () => {
 
 		const listener = CustomEditorUpdateListener.create();
 
-		await vscode.commands.executeCommand('vscode.open', testDocument);
+		await vscode.commands.executeCommand(commands.open, testDocument);
 		await listener.nextResponse();
 
 		const newFileName = vscode.Uri.file(path.join(testWorkspaceRoot.fsPath, 'y.abc'));
@@ -183,7 +187,7 @@ suite('custom editor tests', () => {
 
 		const listener = CustomEditorUpdateListener.create();
 
-		await vscode.commands.executeCommand('vscode.open', testDocument);
+		await vscode.commands.executeCommand(commands.open, testDocument);
 		await listener.nextResponse();
 
 		const newContent = `new-${Date.now()}`;
@@ -193,7 +197,7 @@ suite('custom editor tests', () => {
 			assert.equal(content, newContent);
 		}
 		{
-			await vscode.commands.executeCommand('workbench.action.files.save');
+			await vscode.commands.executeCommand(commands.save);
 			const fileContent = await promises.readFile(testDocument.fsPath)
 			assert.equal(fileContent, newContent);
 		}
@@ -205,7 +209,7 @@ suite('custom editor tests', () => {
 
 		const listener = CustomEditorUpdateListener.create();
 
-		await vscode.commands.executeCommand('vscode.open', testDocument);
+		await vscode.commands.executeCommand(commands.open, testDocument);
 		await listener.nextResponse();
 
 		const newContent = `new-${Date.now()}`;
@@ -215,13 +219,13 @@ suite('custom editor tests', () => {
 			assert.equal(content, newContent);
 		}
 		{
-			await vscode.commands.executeCommand('workbench.action.files.save');
+			await vscode.commands.executeCommand(commands.save);
 			const fileContent = await promises.readFile(testDocument.fsPath)
 			assert.equal(fileContent, newContent);
 		}
 		await wait(100);
 		{
-			await vscode.commands.executeCommand(undoCommand);
+			await vscode.commands.executeCommand(commands.undo);
 			const { content } = await listener.nextResponse();
 			assert.equal(content, startingContent);
 		}
@@ -233,13 +237,13 @@ suite('custom editor tests', () => {
 		const testFileName = 'z.abc';
 		const untitledFile = vscode.Uri.parse(`untitled:${testFileName}`);
 
-		await vscode.commands.executeCommand('vscode.open', untitledFile);
+		await vscode.commands.executeCommand(commands.open, untitledFile);
 		assert.equal((await listener.nextResponse()).content, '');
 
 		await vscode.commands.executeCommand(Testing.abcEditorTypeCommand, `123`);
 		assert.equal((await listener.nextResponse()).content, '123');
 
-		await vscode.commands.executeCommand('workbench.action.files.save');
+		await vscode.commands.executeCommand(commands.save);
 		const content = await promises.readFile(path.join(testWorkspaceRoot.fsPath, testFileName));
 		assert.equal(content.toString(), '123');
 	});
@@ -251,18 +255,18 @@ suite('custom editor tests', () => {
 		const listener = CustomEditorUpdateListener.create();
 
 		{
-			await vscode.commands.executeCommand('vscode.open', testDocument, { preview: false });
+			await vscode.commands.executeCommand(commands.open, testDocument, { preview: false });
 			const { content } = await listener.nextResponse();
 			assert.equal(content, startingContent.toString());
 			assert.ok(!vscode.window.activeTextEditor);
 		}
 
 		// Switch to non-default editor
-		await vscode.commands.executeCommand('vscode.openWith', testDocument, 'default', { preview: false });
+		await vscode.commands.executeCommand(commands.openWith, testDocument, 'default', { preview: false });
 		assert.ok(!vscode.window.activeTextEditor)
 
 		// Then open a new document (hiding existing one)
-		await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(path.join(testWorkspaceRoot.fsPath, 'other.json')));
+		await vscode.commands.executeCommand(commands.open, vscode.Uri.file(path.join(testWorkspaceRoot.fsPath, 'other.json')));
 		assert.ok(vscode.window.activeTextEditor)
 
 		// And then back
