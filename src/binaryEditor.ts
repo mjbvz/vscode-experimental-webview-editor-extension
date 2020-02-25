@@ -7,7 +7,7 @@ interface Edit {
     readonly data: Uint8Array
 }
 
-export class CatDrawEditorProvider implements vscode.WebviewCustomEditorProvider {
+export class CatDrawEditorProvider implements vscode.CustomEditorProvider {
 
     public static readonly viewType = 'testWebviewEditor.catDraw';
 
@@ -18,23 +18,23 @@ export class CatDrawEditorProvider implements vscode.WebviewCustomEditorProvider
     ) { }
 
     public register(): vscode.Disposable {
-        return vscode.window.registerWebviewCustomEditorProvider(CatDrawEditorProvider.viewType, this)
+        return vscode.window.registerCustomEditorProvider(CatDrawEditorProvider.viewType, this)
     }
 
-    async provideWebviewCustomEditorDocument(resource: vscode.Uri): Promise<vscode.WebviewEditorCustomDocument> {
-        const model = await CatDrawModel.create(resource);
-        const document = vscode.window.createWebviewEditorCustomDocument(CatDrawEditorProvider.viewType, resource, model, model);
+    async resolveCustomDocument(document: vscode.CustomDocument): Promise<vscode.CustomEditorCapabilities> {
+        const model = await CatDrawModel.create(document.uri);
+        document.userData = model;
         document.onDidDispose(() => {
             console.log('Dispose document')
             model.dispose();
         });
         model.onDidChange(() => {
-            this.update(resource);
-        })
-        return document;
+            this.update(document.uri);
+        });
+        return model;
     }
 
-    public async resolveWebviewCustomEditor(document: DocumentType, panel: vscode.WebviewPanel) {
+    public async resolveCustomEditor(document: DocumentType, panel: vscode.WebviewPanel) {
         const editor = new CatDrawEditor(this.extensionPath, document, panel)
 
         let editorSet = this.editors.get(document.uri.toString())
@@ -59,7 +59,7 @@ export class CatDrawEditorProvider implements vscode.WebviewCustomEditorProvider
     }
 }
 
-class CatDrawModel extends Disposable implements vscode.WebviewCustomEditorCapabilities, vscode.WebviewCustomEditorEditingCapability<Edit> {
+class CatDrawModel extends Disposable implements vscode.CustomEditorCapabilities, vscode.CustomEditorEditingCapability<Edit> {
 
     private readonly _edits: Edit[] = [];
 
@@ -126,7 +126,7 @@ class CatDrawModel extends Disposable implements vscode.WebviewCustomEditorCapab
     }
 }
 
-type DocumentType = vscode.WebviewEditorCustomDocument<CatDrawModel>;
+type DocumentType = vscode.CustomDocument<CatDrawModel>;
 
 export class CatDrawEditor extends Disposable {
 
@@ -154,7 +154,7 @@ export class CatDrawEditor extends Disposable {
             switch (message.type) {
                 case 'stroke':
                     const edit: Edit = { points: message.value.points, data: new Uint8Array(message.value.data.data) }
-                    this.document.userData.onEdit(edit)
+                    this.document.userData?.onEdit(edit)
                     break
             }
         })
@@ -225,7 +225,7 @@ export class CatDrawEditor extends Disposable {
 
         this.panel.webview.postMessage({
             type: 'setValue',
-            value: this.document.userData.getStrokes()
+            value: this.document.userData!.getStrokes()
         })
     }
 }

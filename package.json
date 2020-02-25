@@ -18,7 +18,7 @@
     ],
     "main": "./out/extension",
     "contributes": {
-        "webviewEditors": [
+        "customEditors": [
             {
                 "viewType": "testWebviewEditor.abc",
                 "displayName": "Test ABC editor",

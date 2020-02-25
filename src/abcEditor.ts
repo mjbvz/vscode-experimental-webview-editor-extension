@@ -15,7 +15,7 @@ export namespace Testing {
 }
 
 
-export class AbcEditorProvider implements vscode.WebviewTextEditorProvider {
+export class AbcEditorProvider implements vscode.CustomTextEditorProvider {
 
     public static readonly viewType = 'testWebviewEditor.abc';
 
@@ -27,7 +27,7 @@ export class AbcEditorProvider implements vscode.WebviewTextEditorProvider {
     ) { }
 
     public register(): vscode.Disposable {
-        const provider = vscode.window.registerWebviewTextEditorProvider(AbcEditorProvider.viewType, this);
+        const provider = vscode.window.registerCustomEditorProvider(AbcEditorProvider.viewType, this);
 
         const commands: vscode.Disposable[] = [];
         commands.push(vscode.commands.registerCommand(Testing.abcEditorTypeCommand, (content: string) => {
@@ -37,7 +37,7 @@ export class AbcEditorProvider implements vscode.WebviewTextEditorProvider {
         return vscode.Disposable.from(provider, ...commands);
     }
 
-    public async resolveWebviewTextEditor(document: vscode.TextDocument, panel: vscode.WebviewPanel) {
+    public async resolveCustomTextEditor(document: vscode.TextDocument, panel: vscode.WebviewPanel) {
         const editor = new AbcEditor(document, this.context.extensionPath, panel, this.testModeProvider);
 
         this.activeEditor = editor;
