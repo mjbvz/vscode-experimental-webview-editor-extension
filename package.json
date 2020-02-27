@@ -13,8 +13,8 @@
     ],
     "activationEvents": [
         "onCommand:customEditorSamples.enableTestMode",
-        "onWebviewEditor:testWebviewEditor.abc",
-        "onWebviewEditor:testWebviewEditor.catDraw"
+        "onCustomEditor:testWebviewEditor.abc",
+        "onCustomEditor:testWebviewEditor.catDraw"
     ],
     "main": "./out/extension",
     "contributes": {
