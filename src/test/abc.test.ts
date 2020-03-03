@@ -17,14 +17,14 @@ const commands = Object.freeze({
 
 assert.ok(vscode.workspace.rootPath);
 const testWorkspaceRoot = vscode.Uri.file(vscode.workspace.rootPath!);
- 
+
 const disposables: vscode.Disposable[] = [];
 function _register<T extends vscode.Disposable>(disposable: T) {
 	disposables.push(disposable);
 	return disposable;
 }
 
- class CustomEditorUpdateListener {
+class CustomEditorUpdateListener {
 
 	public static create() {
 		return _register(new CustomEditorUpdateListener());
@@ -277,6 +277,24 @@ suite('Abc editor tests', () => {
 		// Make sure we have the file on as text
 		assert.ok(vscode.window.activeTextEditor);
 		assert.strictEqual(vscode.window.activeTextEditor?.document.uri.toString(), testDocument.toString());
+	});
+
+	test('Should release the text document when the editor is closed', async () => {
+		const startingContent = `release document init,`;
+		const testDocument = await writeRandomFile({ ext: '.abc', contents: startingContent });
+
+		const listener = CustomEditorUpdateListener.create();
+
+		await vscode.commands.executeCommand(commands.open, testDocument);
+		await listener.nextResponse();
+
+		const doc = vscode.workspace.textDocuments.find(x => x.uri.toString() === testDocument.toString());
+		assert.ok(doc);
+		assert.ok(!doc!.isClosed);
+
+		await closeAllEditors();
+		await wait(100);
+		assert.ok(doc!.isClosed);
 	});
 });
 

@@ -14,7 +14,6 @@ export namespace Testing {
     }
 }
 
-
 export class AbcEditorProvider implements vscode.CustomTextEditorProvider {
 
     public static readonly viewType = 'testWebviewEditor.abc';
@@ -27,12 +26,19 @@ export class AbcEditorProvider implements vscode.CustomTextEditorProvider {
     ) { }
 
     public register(): vscode.Disposable {
-        const provider = vscode.window.registerCustomEditorProvider(AbcEditorProvider.viewType, this);
+        const provider = vscode.window.registerCustomEditorProvider(AbcEditorProvider.viewType, this, {
+            enableFindWidget: true
+        });
 
         const commands: vscode.Disposable[] = [];
         commands.push(vscode.commands.registerCommand(Testing.abcEditorTypeCommand, (content: string) => {
             this.activeEditor?.testing_fakeInput(content);
         }));
+
+        setInterval(() => {
+            console.log(vscode.workspace.textDocuments);
+            
+        }, 1000)
 
         return vscode.Disposable.from(provider, ...commands);
     }
