@@ -35,11 +35,6 @@ export class AbcEditorProvider implements vscode.CustomTextEditorProvider {
             this.activeEditor?.testing_fakeInput(content);
         }));
 
-        setInterval(() => {
-            console.log(vscode.workspace.textDocuments);
-            
-        }, 1000)
-
         return vscode.Disposable.from(provider, ...commands);
     }
 
