@@ -7,11 +7,13 @@ interface Edit {
     readonly data: Uint8Array
 }
 
-export class CatDrawEditorProvider implements vscode.CustomEditorProvider {
+export class CatDrawEditorProvider implements vscode.CustomEditorProvider, vscode.CustomEditorEditingDelegate<Edit> {
 
     public static readonly viewType = 'testWebviewEditor.catDraw';
 
     private readonly editors = new Map<string, Set<CatDrawEditor>>();
+
+    public readonly editingDelegate = this;
 
     public constructor(
         private readonly extensionPath: string
@@ -21,17 +23,20 @@ export class CatDrawEditorProvider implements vscode.CustomEditorProvider {
         return vscode.window.registerCustomEditorProvider(CatDrawEditorProvider.viewType, this)
     }
 
-    async resolveCustomDocument(document: vscode.CustomDocument): Promise<vscode.CustomEditorCapabilities> {
+    async resolveCustomDocument(document: vscode.CustomDocument): Promise<void> {
         const model = await CatDrawModel.create(document.uri);
         document.userData = model;
         document.onDidDispose(() => {
             console.log('Dispose document')
             model.dispose();
         });
+
+        model.onDidEdit(edit => {
+            this._onDidEdit.fire({ document, edit });
+        });
         model.onDidChange(() => {
             this.update(document.uri);
         });
-        return model;
     }
 
     public async resolveCustomEditor(document: DocumentType, panel: vscode.WebviewPanel) {
@@ -57,9 +62,40 @@ export class CatDrawEditorProvider implements vscode.CustomEditorProvider {
             }
         }
     }
+
+    //#region CustomEditorDelegate
+
+    async save(document: DocumentType, _cancellation: vscode.CancellationToken): Promise<void> {
+        return document.userData?.save()
+    }
+
+    async saveAs(document: DocumentType, targetResource: vscode.Uri): Promise<void> {
+        return document.userData?.saveAs(targetResource)
+    }
+
+    private readonly _onDidEdit = new vscode.EventEmitter<vscode.CustomDocumentEditEvent<Edit>>();
+    public readonly onDidEdit = this._onDidEdit.event
+
+    async applyEdits(document: DocumentType, edits: readonly Edit[]): Promise<void> {
+        return document.userData?.applyEdits(edits)
+    }
+
+    async undoEdits(document: DocumentType, edits: readonly Edit[]): Promise<void> {
+        return document.userData?.undoEdits(edits)
+    }
+
+    async revert(document: DocumentType, edits: vscode.CustomDocumentRevert): Promise<void> {
+        return document.userData?.revert(edits)
+    }
+
+    async backup(document: DocumentType, cancellation: vscode.CancellationToken): Promise<void> {
+        return document.userData?.backup()
+    }
+
+    //#endregion
 }
 
-class CatDrawModel extends Disposable implements vscode.CustomEditorCapabilities, vscode.CustomEditorEditingCapability<Edit> {
+class CatDrawModel extends Disposable {
 
     private readonly _edits: Edit[] = [];
 
@@ -67,8 +103,6 @@ class CatDrawModel extends Disposable implements vscode.CustomEditorCapabilities
         const buffer = await vscode.workspace.fs.readFile(resource)
         return new CatDrawModel(resource, buffer)
     }
-
-    public readonly editing = this;
 
     private constructor(
         private readonly resource: vscode.Uri,
@@ -116,13 +150,17 @@ class CatDrawModel extends Disposable implements vscode.CustomEditorCapabilities
         this.update()
     }
 
+    async revert(revert: vscode.CustomDocumentRevert): Promise<void> {
+        // TODO
+    }
+
     private update() {
         this._onDidChange.fire();
     }
 
     async backup() {
         // TODO
-        return true;
+        return;
     }
 }
 
